@@ -15,14 +15,12 @@ const noImports=source=>source.replace(/^import[^\n]+\n/gm,'');
 const workerSource=noExports(analyzer)+'\n'+noImports(worker);
 const keySource=noExports(studioAudio)+'\n'+noImports(keyWorker);
 new vm.Script(workerSource);new vm.Script(keySource);
-const originalWorker="new Worker(new URL('./analysis-worker.mjs',import.meta.url),{type:'module'})";
-const originalKeyWorker="new Worker(new URL('./key-worker.mjs',import.meta.url),{type:'module'})";
-
-assert.equal(app.split(originalWorker).length,2,'Expected one BPM worker constructor');
-
-app=noImports(app).replace(originalWorker,'createAnalysisWorker()');
-assert.equal(tools.split(originalKeyWorker).length,2,'Expected one key worker constructor');
-tools=noImports(tools).replace(originalKeyWorker,'createBundledKeyWorker()');
+const workerRe=/new Worker\(new URL\('\.\/analysis-worker\.mjs',\s*import\.meta\.url\),\s*\{type:'module'\}\)/g;
+const keyRe=/new Worker\(new URL\('\.\/key-worker\.mjs',\s*import\.meta\.url\),\s*\{type:'module'\}\)/g;
+assert.equal((app.match(workerRe)||[]).length,1,'Expected one BPM worker constructor');
+assert.equal((app.match(keyRe)||[]).length,1,'Expected one key worker constructor');
+app=noImports(app).replace(workerRe,'createAnalysisWorker()').replace(keyRe,'createBundledKeyWorker()');
+tools=noImports(tools);
 const createBlobWorker=source=>`function ${source==='bpm'?'createAnalysisWorker':'createBundledKeyWorker'}(){\n    const url=URL.createObjectURL(new Blob([${source==='bpm'?'ANALYSIS_WORKER_SOURCE':'KEY_WORKER_SOURCE'}],{type:'text/javascript'}));\n    let worker;try{worker=new Worker(url);}catch(error){URL.revokeObjectURL(url);throw error;}\n    const terminate=worker.terminate.bind(worker);worker.terminate=()=>{URL.revokeObjectURL(url);terminate();};return worker;\n  }`;
 const rawApiBase=(process.env.PULSE_API_BASE_URL||'').trim();
 if(rawApiBase && !/^https:\/\/[^\s/]+\/?$/i.test(rawApiBase) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(rawApiBase)) {
