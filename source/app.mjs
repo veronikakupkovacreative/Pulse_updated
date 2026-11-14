@@ -1,299 +1,226 @@
-(function () {
-  var $ = function (s, r) { return (r || document).querySelector(s); };
-  var $$ = function (s, r) { return [].slice.call((r || document).querySelectorAll(s)); };
+import {initStudioTools} from './tools.mjs';
+const $ = selector => document.querySelector(selector);
+const ui = Object.fromEntries(['file-input','drop-zone','upload-empty','processing','track-content','result-panel','result-empty','result-controls','result-note','result-status','bpm-number','error','live-status'].map(id=>[id,$('#'+id)]));
+const state = {file:null,generation:0,busy:false,worker:null,cancelWorker:null,buffer:null,result:null,bpm:0,factor:1,context:null,source:null,playing:false,starting:false,offset:0,startedAt:0,raf:0,metroTimer:null,metroNext:0,metroBeat:0,metroNodes:new Set(),beatTimers:new Set()};
+const messages = {
+  TOO_SHORT:'Track too short. Use at least 6 seconds.',
+  SILENCE:'Silence or weak audio. Try a track with a clear beat.',
+  NO_RHYTHM:'No steady beat detected. Try another section or Tap Tempo.',
+  DECODE:'Cannot decode audio. Try WAV, MP3 or MP4 with AAC audio.',
+  TIMEOUT:'Analysis timed out. Try a shorter track.'
+};
+const timeLabel = seconds => `${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
+const bpmLabel = value => Number.isInteger(value) ? String(value) : value.toFixed(1).replace('.',',');
 
-  /* ---------- shared snippets injected into every tool view ---------- */
-  var CHIP = '<div class="filechip when-loaded"><i class="dot" aria-hidden="true"></i><b>night-drive_demo.wav</b><span>3:42 · 44.1 kHz · stereo</span><button class="btn btn--sm" type="button" data-unload>Replace</button></div>';
-  $$('[data-slot="chip"]').forEach(function (e) { e.outerHTML = CHIP; });
-  $$('[data-slot="empty"]').forEach(function (e) {
-    e.outerHTML = '<div class="empty when-empty"><div class="dropzone__icon" aria-hidden="true">+</div><h2>No track loaded yet</h2><p>' + e.dataset.msg + '</p><button class="btn btn--primary" type="button" data-load>Load demo track</button><p class="note">Prototype: loads a pretend file called night-drive_demo.wav</p></div>';
-  });
+function announce(text) { ui['live-status'].textContent=text; }
+function showError(message) { ui.error.textContent=message; ui.error.hidden=false; }
+let toastTimer;
+function toast(text) { $('#toast').textContent=text; $('#toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').hidden=true,2500); }
 
-  /* ---------- toast ---------- */
-  var toastEl = $('#toast'), toastT;
-  function toast(msg) {
-    toastEl.textContent = msg; toastEl.classList.add('show');
-    clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 2200);
+function setBusy(busy) {
+  state.busy=busy;
+  $('#an-run').hidden=!busy;
+  $('#an-done').hidden=true;
+  if(busy) {
+      $('#an-pct').textContent = '0%';
+      $('#an-bar').style.width = '0%';
   }
+}
 
-  /* ---------- waveform helper ---------- */
-  function wave(el, seed, cls) {
-    var s = '';
-    for (var i = 0; i < 220; i++) {
-      var env = 0.35 + 0.45 * Math.abs(Math.sin(i / 17 + seed)) + 0.15 * Math.sin(i / 5 + seed * 2);
-      var h = Math.max(4, Math.min(96, env * 100 * (0.7 + 0.3 * Math.abs(Math.sin(i * 1.7 + seed)))));
-      s += '<rect x="' + i + '" y="' + ((100 - h) / 2).toFixed(1) + '" width="0.62" height="' + h.toFixed(1) + '" rx="0.2"/>';
-    }
-    el.innerHTML = s;
-  }
-  (function () {
-    var w = $('#wave'), html = '';
-    for (var i = 0; i < 90; i++) {
-      var h = 18 + Math.abs(Math.sin(i * 0.42) * 60) + (i * 7 % 13);
-      html += '<i style="--h:' + Math.min(h, 100).toFixed(0) + '%;--i:' + i + '"></i>';
-    }
-    w.innerHTML = html;
-  })();
-  wave($('#wl'), 1); wave($('#wr'), 1.7);
+function stopPlayback() {
+  if(state.source){state.source.onended=null;try{state.source.stop();}catch{}state.source.disconnect();state.source=null;}
+  state.playing=false;
+}
 
-  /* ---------- track state ---------- */
-  var anTimer;
-  function runAnalysis() {
-    clearInterval(anTimer);
-    $('#an-run').hidden = false; $('#an-done').hidden = true;
-    var p = 0, bar = $('#an-bar'), pct = $('#an-pct');
-    bar.style.width = '0'; pct.textContent = '0%';
-    anTimer = setInterval(function () {
-      p += 8 + Math.random() * 10;
-      if (p >= 100) {
-        p = 100; clearInterval(anTimer);
-        bar.style.width = '100%'; pct.textContent = '100%';
-        setTimeout(function () { $('#an-run').hidden = true; $('#an-done').hidden = false; drawBeat(); }, 250);
-        return;
-      }
-      bar.style.width = p + '%'; pct.textContent = Math.round(p) + '%';
-    }, 140);
-  }
-  function drawBeat() {
-    var svg = $('#bg'); wave(svg, 1.3);
-    var lines = '';
-    for (var i = 0; i < 32; i++) {
-      var x = (i * 220 / 32 + 1).toFixed(1);
-      lines += '<line class="' + (i % 4 === 0 ? 'bar' : '') + '" x1="' + x + '" x2="' + x + '" y1="0" y2="100"/>';
-    }
-    svg.insertAdjacentHTML('beforeend', lines);
-  }
-  function setTrack(v) {
-    document.body.dataset.track = v ? 'loaded' : 'none';
-    if (v) runAnalysis();
-  }
+function reset() {
+  state.generation++;state.cancelWorker?.();state.cancelWorker=null;state.worker?.terminate();state.worker=null;stopPlayback();state.file=null;state.buffer=null;state.result=null;window.dispatchEvent(new Event('pulse:bpm-track-ready'));state.offset=0;state.bpm=0;state.factor=1;state.starting=false;
+  
+  setBusy(false);
+  $('#an-run').hidden=true;
+  $('#an-done').hidden=true;
+  setTrack(false);
+}
 
-  /* ---------- router ---------- */
-  var KNOWN = { home: 1, analyzer: 1, tagger: 1, editor: 1, converter: 1, ai: 1, visualizer: 1 };
-  var NAVMAP = { analyzer: 'analyzer', tagger: 'analyzer', editor: 'editor', converter: 'converter', ai: 'ai', 'ai-tool': 'ai', visualizer: 'visualizer' };
-  var TITLES = { home: 'Home', analyzer: 'Song Analyzer', tagger: 'Music Tagger', editor: 'Audio Editor', converter: 'Audio Converter', ai: 'AI Studio', visualizer: 'Audio Visualizer' };
-  function route() {
-    var h = location.hash.replace(/^#\/?/, '') || 'home';
-    var parts = h.split('/'), name = parts[0], arg = parts[1], view = name;
-    if (!KNOWN[name]) return;
-    if (name === 'ai' && arg) {
-      if (!AIMAP[arg]) { location.hash = '#/ai'; return; }
-      view = 'ai-tool'; renderAi(arg);
-    }
-    $$('.view').forEach(function (v) { v.hidden = v.dataset.view !== view; });
-    var nv = NAVMAP[view];
-    $$('[data-nav]').forEach(function (a) { if (a.dataset.nav === nv) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current'); });
-    document.title = (view === 'ai-tool' ? AIMAP[arg].name : TITLES[view]) + ' — PULSE Studio (prototype)';
-    window.scrollTo(0, 0);
-    var h1 = $('.view:not([hidden]) h1'); if (h1) { h1.setAttribute('tabindex', '-1'); h1.focus({ preventScroll: true }); }
-    vs.run = (view === 'visualizer');
-    if (vs.run && !vs.loop) { vs.loop = true; requestAnimationFrame(frame); }
-  }
-  window.addEventListener('hashchange', route);
-
-  /* ---------- global click handling ---------- */
-  document.addEventListener('click', function (e) {
-    var t;
-    if ((t = e.target.closest('[data-load]'))) {
-      setTrack(true);
-      if (t.dataset.go) location.hash = '#/' + t.dataset.go;
-      else toast('Demo track loaded');
-      return;
-    }
-    if ((t = e.target.closest('[data-unload]'))) { setTrack(false); toast('Audio removed'); return; }
-    if ((t = e.target.closest('[data-toast]'))) { toast(t.dataset.toast); return; }
-    if ((t = e.target.closest('[data-scroll]'))) { var el = document.getElementById(t.dataset.scroll); if (el) el.scrollIntoView({ behavior: 'smooth' }); return; }
-    if (e.target.closest('.skip-link')) { e.preventDefault(); var m = $('#main'); m.setAttribute('tabindex', '-1'); m.focus(); return; }
-  });
-  var dz = $('#drop');
-  ['dragenter', 'dragover'].forEach(function (ev) { dz.addEventListener(ev, function (x) { x.preventDefault(); dz.classList.add('is-dragover'); }); });
-  ['dragleave', 'drop'].forEach(function (ev) { dz.addEventListener(ev, function (x) { x.preventDefault(); dz.classList.remove('is-dragover'); if (ev === 'drop') { setTrack(true); location.hash = '#/analyzer'; } }); });
-
-  /* ---------- home filters ---------- */
-  $$('#filters .chip').forEach(function (c) {
-    c.addEventListener('click', function () {
-      $$('#filters .chip').forEach(function (x) { x.setAttribute('aria-pressed', x === c ? 'true' : 'false'); });
-      var f = c.dataset.f;
-      $$('#toolgrid .card').forEach(function (card) { card.style.display = (f === 'all' || card.dataset.cat === f) ? '' : 'none'; });
+async function processFile(file) {
+  if(!file||state.busy)return;
+  ui.error.hidden=true;
+  if(!/\.(wav|mp3|mp4)$/i.test(file.name)){showError('Unsupported format. Use WAV, MP3 or MP4.');return;}
+  if(file.size>100*1024*1024){showError('File exceeds 100 MB. Choose a smaller file.');return;}
+  if(file.size===0){showError('Empty file. Try another.');return;}
+  
+  reset();
+  const generation=state.generation;
+  setBusy(true);
+  
+  try {
+    const OfflineContext=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+    if(!OfflineContext)throw new Error('Audio analysis is not supported in this browser.');
+    let buffer;
+    try { const decoder=new OfflineContext(1,1,22050);buffer=await decoder.decodeAudioData(await file.arrayBuffer()); }
+    catch { throw new Error('DECODE'); }
+    if(generation!==state.generation)return;
+    if(buffer.duration>1200)throw new Error('Track exceeds 20 minutes.');
+    if(buffer.duration<6)throw new Error('TOO_SHORT');
+    
+    let bestChannel=0,bestEnergy=-1;
+    for(let ch=0;ch<buffer.numberOfChannels;ch++) {const data=buffer.getChannelData(ch);let energy=0;for(let i=0;i<data.length;i+=32)energy+=data[i]*data[i];if(energy>bestEnergy){bestEnergy=energy;bestChannel=ch;}}
+    const samples=buffer.getChannelData(bestChannel).slice();
+    
+    const result=await new Promise((resolve,reject)=>{
+      const worker=new Worker(new URL('./analysis-worker.mjs',import.meta.url),{type:'module'});state.worker=worker;
+      const timeout=setTimeout(()=>{worker.terminate();reject(new Error('TIMEOUT'));},60000);
+      state.cancelWorker=()=>{clearTimeout(timeout);worker.terminate();reject(new Error('CANCELLED'));};
+      worker.onmessage=({data})=>{clearTimeout(timeout);worker.terminate();if(state.worker===worker){state.worker=null;state.cancelWorker=null;}data.error?reject(new Error(data.error)):resolve(data.result);};
+      worker.onerror=()=>{clearTimeout(timeout);worker.terminate();state.cancelWorker=null;reject(new Error('Analysis failed to start. Refresh and retry.'));};
+      worker.postMessage({samples,sampleRate:buffer.sampleRate},[samples.buffer]);
+      
+      // Simulate progress bar visually since worker doesn't report it
+      let p=0;
+      let pTimer=setInterval(()=>{
+          p+=Math.random()*15;
+          if(p>95) p=95;
+          if(state.worker===null) {
+              clearInterval(pTimer);
+              p=100;
+          }
+          $('#an-bar').style.width = p + '%'; 
+          $('#an-pct').textContent = Math.round(p) + '%';
+      }, 300);
     });
-  });
-  $('#an-rerun').addEventListener('click', runAnalysis);
+    
+    if(generation!==state.generation)return;
+    state.file=file;state.buffer=buffer;state.result=result;window.dispatchEvent(new Event('pulse:bpm-track-ready'));state.bpm=result.bpm;
+    setBusy(false);
+    
+    renderResult(file);
+    
+  } catch(error) {
+    if(generation!==state.generation)return;
+    setBusy(false);showError(messages[error.message]||error.message);
+  }
+}
 
-  /* ---------- editor ---------- */
-  var tools = $$('.tool[aria-pressed]');
-  tools.forEach(function (t) { t.addEventListener('click', function () { tools.forEach(function (x) { x.setAttribute('aria-pressed', 'false'); }); t.setAttribute('aria-pressed', 'true'); }); });
-  $('#loopbtn').addEventListener('click', function () { var b = this; b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'); });
-  function bind(id, out, fmt) { var i = document.getElementById(id), o = document.getElementById(out); function u() { o.textContent = fmt(+i.value); } i.addEventListener('input', u); u(); }
-  bind('fi', 'fiO', function (v) { return v.toFixed(1) + ' s'; });
-  bind('fo', 'foO', function (v) { return v.toFixed(1) + ' s'; });
-  bind('gn', 'gnO', function (v) { return (v > 0 ? '+' : '') + v.toFixed(1) + ' dB'; });
+function renderResult(file) {
+  $$('.metric--hot b')[0].textContent = state.result.bpm;
+  
+  setTrack(true, file.name);
+  $('#an-run').hidden = true; 
+  $('#an-done').hidden = false;
+  drawBeat(state.result.waveform);
+}
 
-  var play = $('#play'), ph = $('#playhead'), now = $('#now'), pos = 0.35, timer = null;
-  function fmt(t) { var m = Math.floor(t / 60), s = (t % 60).toFixed(1); return m + ':' + (s < 10 ? '0' : '') + s; }
-  play.addEventListener('click', function () {
-    if (timer) { clearInterval(timer); timer = null; play.textContent = '▶'; play.setAttribute('aria-label', 'Play'); return; }
-    play.textContent = '❚❚'; play.setAttribute('aria-label', 'Pause');
-    timer = setInterval(function () { pos += 0.0018; if (pos > 1) pos = 0; ph.style.left = (pos * 100) + '%'; now.textContent = fmt(pos * 222); }, 40);
-  });
 
-  var W = 400, H = 150, MID = 75, FMIN = 20, FMAX = 20000;
-  var bands = [{ f: 80, g: 3, q: 1.0 }, { f: 400, g: -4, q: 1.4 }, { f: 3000, g: 2.5, q: 1.2 }, { f: 10000, g: 4, q: 0.8 }], sel = 1;
-  function fx(f) { return W * (Math.log(f / FMIN) / Math.log(FMAX / FMIN)); }
-  function gy(g) { return MID - g * (MID / 14); }
-  var gr = '';
-  [20, 100, 1000, 10000].forEach(function (f) {
-    gr += '<line class="gridline" x1="' + fx(f) + '" x2="' + fx(f) + '" y1="0" y2="' + H + '"/><text x="' + (fx(f) + 3) + '" y="' + (H - 4) + '">' + (f >= 1000 ? (f / 1000) + 'k' : f) + '</text>';
-  });
-  gr += '<line class="gridline zero" x1="0" x2="' + W + '" y1="' + MID + '" y2="' + MID + '"/>';
-  [12, -12].forEach(function (d) { gr += '<text x="3" y="' + (gy(d) + (d > 0 ? 10 : -3)) + '">' + (d > 0 ? '+' : '') + d + '</text>'; });
-  $('#eqgrid').innerHTML = gr;
-  function draw() {
-    var pts = [];
-    for (var x = 0; x <= W; x += 4) {
-      var g = 0; bands.forEach(function (b) { var d = (x - fx(b.f)) / (W / 5.5 / b.q); g += b.g * Math.exp(-d * d); });
-      pts.push([x, gy(Math.max(-13, Math.min(13, g)))]);
+/* ---------- UI and Drag&Drop wiring ---------- */
+var CHIP = '<div class="filechip when-loaded"><i class="dot" aria-hidden="true"></i><b id="loaded-filename">night-drive_demo.wav</b><span id="loaded-fileinfo"></span><button class="btn btn--sm" type="button" data-unload>Replace</button></div>';
+$$('[data-slot="chip"]').forEach(function (e) { e.outerHTML = CHIP; });
+$$('[data-slot="empty"]').forEach(function (e) {
+  e.outerHTML = '<div class="empty when-empty"><div class="dropzone__icon" aria-hidden="true">+</div><h2>No track loaded yet</h2><p>' + e.dataset.msg + '</p><button class="btn btn--primary" type="button" data-load>Load demo track</button><p class="note">Upload any audio file to begin.</p></div>';
+});
+
+let currentFile = null; 
+var dz = $('#drop');
+
+['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, x => { 
+    x.preventDefault(); 
+    dz.classList.add('is-dragover'); 
+}));
+
+['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, x => { 
+    x.preventDefault(); 
+    dz.classList.remove('is-dragover'); 
+    if (ev === 'drop' && x.dataTransfer.files.length > 0) { 
+        currentFile = x.dataTransfer.files[0];
+        processFile(currentFile);
+        location.hash = '#/analyzer'; 
+    } 
+}));
+
+dz.addEventListener('click', () => {
+    let input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'audio/*';
+    input.onchange = e => {
+        if (e.target.files.length > 0) {
+            currentFile = e.target.files[0];
+            processFile(currentFile);
+            location.hash = '#/analyzer';
+        }
+    };
+    input.click();
+});
+
+function drawBeat(waveform) {
+  var svg = $('#bg'); 
+  var s = '';
+  if(waveform) {
+      const len = waveform.length;
+      for (let i = 0; i < len; i++) {
+        let h = Math.max(4, waveform[i] * 96);
+        s += '<rect x="' + i + '" y="' + ((100 - h) / 2).toFixed(1) + '" width="0.62" height="' + h.toFixed(1) + '" rx="0.2"/>';
+      }
+  } else {
+      // Fallback
+      for (let i = 0; i < 220; i++) {
+        s += '<rect x="' + i + '" y="48" width="0.62" height="4" rx="0.2"/>';
+      }
+  }
+  
+  var lines = '';
+  for (var i = 0; i < 32; i++) {
+    var x = (i * 220 / 32 + 1).toFixed(1);
+    lines += '<line class="' + (i % 4 === 0 ? 'bar' : '') + '" x1="' + x + '" x2="' + x + '" y1="0" y2="100"/>';
+  }
+  svg.innerHTML = s + lines;
+}
+
+function setTrack(v, name = "night-drive_demo.wav") {
+  document.body.dataset.track = v ? 'loaded' : 'none';
+  if (v) {
+      $$('#loaded-filename').forEach(el => el.textContent = name);
+  } else {
+      currentFile = null;
+  }
+}
+
+document.addEventListener('click', function (e) {
+  var t;
+  if ((t = e.target.closest('[data-load]'))) {
+    if (!currentFile) {
+        // Create dummy file for "demo track" click
+        setTrack(true);
+        $('#an-run').hidden = false;
+        setTimeout(()=>{
+            $('#an-run').hidden = true;
+            $('#an-done').hidden = false;
+            $$('.metric--hot b')[0].textContent = "124";
+            drawBeat();
+        }, 1500);
     }
-    $('#curve').setAttribute('d', 'M0,' + MID + ' ' + pts.map(function (p) { return 'L' + p[0] + ',' + p[1].toFixed(1); }).join(' ') + ' L' + W + ',' + MID + ' Z');
-    $('#nodes').innerHTML = bands.map(function (b, i) { return '<circle class="node' + (i === sel ? ' is-active' : '') + '" cx="' + fx(b.f).toFixed(1) + '" cy="' + gy(b.g).toFixed(1) + '" r="' + (i === sel ? 7 : 5.5) + '"/>'; }).join('');
-    var b = bands[sel];
-    $('#ef').value = Math.round(1000 * Math.log(b.f / FMIN) / Math.log(FMAX / FMIN)); $('#eg').value = b.g; $('#eqq').value = b.q;
-    $('#efO').textContent = b.f >= 1000 ? (b.f / 1000).toFixed(1) + ' kHz' : Math.round(b.f) + ' Hz';
-    $('#egO').textContent = (b.g > 0 ? '+' : '') + b.g.toFixed(1) + ' dB'; $('#eqO').textContent = b.q.toFixed(1);
+    if (t.dataset.go) location.hash = '#/' + t.dataset.go;
+    else toast('Demo track loaded');
+    return;
   }
-  $('#ef').addEventListener('input', function (e) { bands[sel].f = FMIN * Math.pow(FMAX / FMIN, e.target.value / 1000); draw(); });
-  $('#eg').addEventListener('input', function (e) { bands[sel].g = +e.target.value; draw(); });
-  $('#eqq').addEventListener('input', function (e) { bands[sel].q = +e.target.value; draw(); });
-  $$('.bands .chip').forEach(function (c) { c.addEventListener('click', function () { sel = +c.dataset.b; $$('.bands .chip').forEach(function (x) { x.setAttribute('aria-pressed', x === c ? 'true' : 'false'); }); draw(); }); });
-  draw();
+  if ((t = e.target.closest('[data-unload]'))) { reset(); toast('Audio removed'); return; }
+  if ((t = e.target.closest('[data-toast]'))) { toast(t.dataset.toast); return; }
+});
 
-  /* ---------- converter ---------- */
-  var cTimer;
-  function cEstimate() {
-    var f = $('input[name="cf"]:checked').value, br = parseInt($('#cbr').value, 10);
-    var lossy = (f === 'mp3' || f === 'aac' || f === 'ogg');
-    $('#cbr-wrap').style.display = lossy ? '' : 'none';
-    var mb = lossy ? Math.round(((3 * 60 + 42 + 68) * br) / 8 / 1024) : (f === 'wav' ? 47 : 26);
-    $('#cest').textContent = 'Estimated output: ~' + mb + ' MB total';
-  }
-  $$('input[name="cf"]').forEach(function (r) { r.addEventListener('change', cEstimate); });
-  $('#cbr').addEventListener('change', cEstimate); cEstimate();
-  $('#cgo').addEventListener('click', function () {
-    $('#cgo').hidden = true; $('#cdone').hidden = true; $('#cprog').hidden = false;
-    var p = 0; clearInterval(cTimer);
-    cTimer = setInterval(function () {
-      p += 5 + Math.random() * 7;
-      if (p >= 100) { p = 100; clearInterval(cTimer); $('#cprog').hidden = true; $('#cdone').hidden = false; }
-      $('#cbar').style.width = p + '%'; $('#cpct').textContent = Math.round(p) + '%';
-      $('#cmsg').textContent = p < 50 ? 'Converting night-drive_demo.wav…' : 'Converting bassline_v3.flac…';
-    }, 120);
-  });
-  $('#cagain').addEventListener('click', function () { $('#cdone').hidden = true; $('#cgo').hidden = false; $('#cbar').style.width = '0'; });
+/* Router and layout code... */
+var KNOWN = { home: 1, analyzer: 1, tagger: 1, editor: 1, converter: 1, ai: 1, visualizer: 1 };
+var NAVMAP = { analyzer: 'analyzer', tagger: 'analyzer', editor: 'editor', converter: 'converter', ai: 'ai', 'ai-tool': 'ai', visualizer: 'visualizer' };
+function route() {
+  var h = location.hash.replace(/^#\/?/, '') || 'home';
+  var parts = h.split('/'), name = parts[0], view = name;
+  if (!KNOWN[name]) return;
+  $$('.view').forEach(function (v) { v.hidden = v.dataset.view !== view; });
+  var nv = NAVMAP[view];
+  $$('[data-nav]').forEach(function (a) { if (a.dataset.nav === nv) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current'); });
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', route);
 
-  /* ---------- AI Studio ---------- */
-  var AI = [
-    { g: 'Master & mix', items: [
-      { id: 'mastering', name: 'AI Mastering', cloud: true, d: 'Balance loudness, tone and stereo image for release-ready masters.', o: [['range', 'Loudness target', -14, -24, -6, ' LUFS'], ['select', 'Tone', ['Warm', 'Neutral', 'Bright']], ['range', 'Limiter ceiling', -1, -3, 0, ' dBTP']] },
-      { id: 'mix', name: 'Mix Assistant', cloud: true, d: 'Get balance suggestions for levels, panning and low end.', o: [['select', 'Reference style', ['Synthwave', 'Pop', 'Hip-hop', 'Rock']], ['range', 'Vocal level', 0, -6, 6, ' dB'], ['range', 'Low-end punch', 50, 0, 100, '%']] },
-      { id: 'stereo', name: 'Stereo Lab', cloud: false, d: 'Widen, narrow or fix the stereo image without losing mono compatibility.', o: [['range', 'Stereo width', 120, 0, 200, '%'], ['range', 'Mono bass below', 120, 20, 300, ' Hz']] }] },
-    { g: 'Voice & stems', items: [
-      { id: 'vocal', name: 'Vocal Studio', cloud: true, d: 'Isolate, remove or clean up vocals.', o: [['select', 'Mode', ['Isolate vocal', 'Remove vocal', 'De-ess', 'Trim reverb tail']], ['range', 'Strength', 70, 0, 100, '%']] },
-      { id: 'stems', name: 'Stem Extraction', cloud: true, d: 'Split a track into separate stems you can download.', o: [['select', 'Stems', ['4 stems (vocals, drums, bass, other)', '2 stems (vocals, instrumental)', '6 stems']], ['select', 'Output', ['WAV', 'FLAC', 'MP3']]] },
-      { id: 'repair', name: 'Audio Repair', cloud: false, d: 'Reduce noise, clicks and hum in noisy recordings.', o: [['range', 'Noise reduction', 40, 0, 100, '%'], ['range', 'De-click', 30, 0, 100, '%'], ['range', 'De-hum', 0, 0, 100, '%']] }] },
-    { g: 'Creative', items: [
-      { id: 'beat', name: 'Beat Lab', cloud: false, d: 'Sketch drum patterns that follow your track\'s tempo.', o: [['range', 'Tempo', 124, 60, 200, ' BPM'], ['select', 'Pattern', ['House', 'Breaks', 'Trap', 'Garage']], ['range', 'Swing', 12, 0, 60, '%']] },
-      { id: 'fx', name: 'Smart FX', cloud: false, d: 'Add tape, reverb, delay or chorus with sensible starting points.', o: [['select', 'Effect', ['Tape saturation', 'Plate reverb', 'Stereo delay', 'Chorus']], ['range', 'Mix', 35, 0, 100, '%']] },
-      { id: 'pitch', name: 'Pitch & Time', cloud: false, d: 'Shift pitch or stretch time independently.', o: [['range', 'Pitch', 0, -12, 12, ' st'], ['range', 'Time stretch', 100, 50, 200, '%'], ['select', 'Mode', ['Preserve formants', 'Classic']]] }] },
-    { g: 'Generate & clean', items: [
-      { id: 'lyrics', name: 'Lyrics Generator', cloud: true, d: 'Draft lyric ideas from a mood and language.', o: [['select', 'Language', ['English', 'Czech', 'Spanish']], ['select', 'Mood', ['Nocturnal', 'Uplifting', 'Melancholic']], ['range', 'Verses', 2, 1, 4, '']] },
-      { id: 'music', name: 'AI Music Generator', cloud: true, d: 'Generate a short musical idea from a genre and key.', o: [['select', 'Genre', ['Synthwave', 'Lo-fi', 'Ambient', 'House']], ['range', 'Length', 60, 15, 180, ' s'], ['select', 'Key', ['A minor', 'C major', 'F minor']]] },
-      { id: 'watermark', name: 'Watermark Cleaner', cloud: false, d: 'Detect and reduce audible watermarks.', o: [['select', 'Method', ['Detect only', 'Remove (experimental)']], ['range', 'Sensitivity', 60, 0, 100, '%']] }] }
-  ];
-  var AIMAP = {};
-  AI.forEach(function (grp) { grp.items.forEach(function (t) { t.g = grp.g; AIMAP[t.id] = t; }); });
-  $('#ai-groups').innerHTML = AI.map(function (grp) {
-    return '<div class="group"><h2>' + grp.g + ' <small>' + grp.items.length + ' tools</small></h2><div class="grid">' +
-      grp.items.map(function (t) {
-        return '<a class="card card--tool" href="#/ai/' + t.id + '"><div class="card__top"><span class="card__num">' + t.g.toUpperCase() + '</span><span class="tag ' + (t.cloud ? 'tag--cloud">Cloud' : 'tag--local">Local') + '</span></div><h3>' + t.name + '</h3><p>' + t.d + '</p><span class="card__link">Open ' + t.name + '</span></a>';
-      }).join('') + '</div></div>';
-  }).join('');
+// Initialize original tool handlers for editor and converter compatibility
+initStudioTools(()=>({file:state.file,buffer:state.buffer,bpm:state.bpm}));
 
-  var aiCur = null, aiTimer;
-  function renderAi(id) {
-    var t = AIMAP[id]; aiCur = t; clearInterval(aiTimer);
-    var words = t.name.split(' '), last = words.pop();
-    $('#ai-title').innerHTML = (words.length ? words.join(' ') + ' ' : '') + '<em>' + last.replace('&', '&') + '</em>';
-    $('#ai-crumb').textContent = t.name;
-    $('#ai-desc').textContent = t.d;
-    var tag = $('#ai-tag'); tag.className = 'tag ' + (t.cloud ? 'tag--cloud' : 'tag--local'); tag.textContent = t.cloud ? 'Cloud · asks first' : 'Local';
-    $('#ai-controls').innerHTML = t.o.map(function (o, i) {
-      if (o[0] === 'range') return '<div class="field"><label for="ao' + i + '">' + o[1] + ' <output id="aoO' + i + '">' + o[2] + o[5] + '</output></label><input id="ao' + i + '" type="range" min="' + o[3] + '" max="' + o[4] + '" value="' + o[2] + '" data-u="' + o[5] + '" data-o="aoO' + i + '"></div>';
-      return '<div class="fieldblock"><label for="ao' + i + '">' + o[1] + '</label><select class="input" id="ao' + i + '">' + o[2].map(function (v) { return '<option>' + v + '</option>'; }).join('') + '</select></div>';
-    }).join('');
-    $$('#ai-controls input[type=range]').forEach(function (r) { r.addEventListener('input', function () { document.getElementById(r.dataset.o).textContent = r.value + r.dataset.u; }); });
-    $('#ai-run').textContent = 'Run ' + t.name;
-    $('#ai-idle').hidden = false; $('#ai-prog').hidden = true; $('#ai-res').hidden = true;
-  }
-  function startAi() {
-    $('#ai-idle').hidden = true; $('#ai-res').hidden = true; $('#ai-prog').hidden = false;
-    var p = 0, bar = $('#ai-bar'); bar.style.width = '0'; clearInterval(aiTimer);
-    $('#ai-msg').textContent = aiCur.cloud ? 'Uploading and processing…' : 'Processing on your device…';
-    aiTimer = setInterval(function () {
-      p += 4 + Math.random() * 7;
-      if (p >= 100) { p = 100; clearInterval(aiTimer); $('#ai-prog').hidden = true; $('#ai-res').hidden = false; wave($('#aiw'), 2.2); $('#ai-done-tag').textContent = aiCur.cloud ? 'Done · upload deleted' : 'Done · on device'; }
-      bar.style.width = p + '%'; $('#ai-pct').textContent = Math.round(p) + '%';
-    }, 110);
-  }
-  var consent = $('#consent');
-  $('#ai-run').addEventListener('click', function () {
-    if (aiCur.cloud && consent.showModal) consent.showModal(); else startAi();
-  });
-  $('#consent-no').addEventListener('click', function () { consent.close(); toast('Nothing was uploaded'); });
-  $('#consent-yes').addEventListener('click', function () { consent.close(); startAi(); });
-  $$('input[name="ab"]').forEach(function (r) { r.addEventListener('change', function () { wave($('#aiw'), r.value === 'after' ? 2.2 : 1.0); }); });
-
-  /* ---------- visualizer ---------- */
-  var cv = $('#viz'), cx = cv.getContext('2d');
-  var vs = { style: 'bars', color: '#ff4d1c', sens: 70, playing: true, run: false, loop: false, t: 0, last: 0 };
-  var SIZES = { '16:9': [1280, 720], '9:16': [720, 1280], '1:1': [1000, 1000] };
-  function frame(ts) {
-    if (!vs.run) { vs.loop = false; return; }
-    requestAnimationFrame(frame);
-    var dt = (ts - vs.last) / 1000; vs.last = ts; if (dt > 0.1) dt = 0.016;
-    if (vs.playing) vs.t += dt;
-    var w = cv.width, h = cv.height, k = vs.sens / 100, t = vs.t, i;
-    cx.fillStyle = '#050506'; cx.fillRect(0, 0, w, h);
-    cx.fillStyle = vs.color; cx.strokeStyle = vs.color;
-    if (vs.style === 'bars') {
-      var n = 48, bw = w / n;
-      for (i = 0; i < n; i++) {
-        var a = (0.2 + 0.8 * Math.abs(Math.sin(t * 2.1 + i * 0.35) * Math.cos(t * 0.9 + i * 0.12))) * k;
-        var bh = a * h * 0.7; cx.fillRect(i * bw + bw * 0.15, h / 2 - bh / 2, bw * 0.7, bh);
-      }
-    } else if (vs.style === 'wave') {
-      cx.lineWidth = Math.max(3, h / 160); cx.beginPath();
-      for (var x = 0; x <= w; x += 4) {
-        var y = h / 2 + Math.sin(x / w * 18 + t * 3) * h * 0.18 * k * Math.sin(x / w * 3.1 + t) + Math.sin(x / w * 47 + t * 5) * h * 0.05 * k;
-        if (x === 0) cx.moveTo(x, y); else cx.lineTo(x, y);
-      }
-      cx.stroke();
-    } else {
-      var m = Math.min(w, h), r0 = m * 0.2; cx.lineWidth = m * 0.012; cx.lineCap = 'round';
-      for (i = 0; i < 72; i++) {
-        var ang = i / 72 * Math.PI * 2, aa = (0.15 + 0.85 * Math.abs(Math.sin(t * 2 + i * 0.4) * Math.cos(t + i * 0.17))) * k, len = m * 0.24 * aa;
-        cx.beginPath(); cx.moveTo(w / 2 + Math.cos(ang) * r0, h / 2 + Math.sin(ang) * r0); cx.lineTo(w / 2 + Math.cos(ang) * (r0 + len), h / 2 + Math.sin(ang) * (r0 + len)); cx.stroke();
-      }
-    }
-  }
-  $$('input[name="vs"]').forEach(function (r) { r.addEventListener('change', function () { vs.style = r.value; }); });
-  $$('input[name="va"]').forEach(function (r) { r.addEventListener('change', function () {
-    var s = SIZES[r.value]; cv.width = s[0]; cv.height = s[1];
-    cv.style.maxWidth = r.value === '9:16' ? '380px' : '100%'; cv.style.margin = r.value === '9:16' ? '0 auto' : '0';
-  }); });
-  $$('#vcol .swatch').forEach(function (b) { b.addEventListener('click', function () { vs.color = b.dataset.c; $$('#vcol .swatch').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); }); }); });
-  $('#vsens').addEventListener('input', function (e) { vs.sens = +e.target.value; $('#vsensO').textContent = vs.sens + '%'; });
-  $('#vplay').addEventListener('click', function () { vs.playing = !vs.playing; this.textContent = vs.playing ? '❚❚' : '▶'; this.setAttribute('aria-label', vs.playing ? 'Pause' : 'Play'); });
-
-  /* ---------- boot ---------- */
-  if (/[?&]loaded/.test(location.search)) setTrack(true);
-  route();
-})();
+// Trigger route on load
+if (/[?&]loaded/.test(location.search)) setTrack(true);
+route();
