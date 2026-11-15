@@ -1,12 +1,13 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#f5f4f0">
-  <meta name="description" content="BPM, key detection, conversion and loops for producers.">
-  <title>Pulse Studio — BPM Analyzer & Producer Toolkit</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23181818'/%3E%3Ccircle cx='32' cy='32' r='23' fill='%23ff2b20'/%3E%3C/svg%3E">
-  <style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PULSE Studio — Audio Workspace</title>
+<meta name="description" content="Audio workspace for analyzing and editing tracks locally in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
 /* ==========================================================================
    PULSE STUDIO — UI v2 stylesheet
    Keeps the existing editorial identity (warm paper, ink, mono micro-labels,
@@ -757,107 +758,498 @@ dialog.modal .row { justify-content: flex-end; }
 .view h1:focus, #main:focus { outline: none; }          /* heading focus after route change: no ring */
 .block .row--between { margin-bottom: var(--space-2); } /* breathing room under block headers */
 .block .row--between h3 { margin: 0; }
+/* Always keep reference in its intended dark-only mode */
+:root { color-scheme:dark; }
+.protobar{display:none}
+#toast.show{z-index:500}
+#live-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 
 </style>
-
 </head>
-<body>
-<svg class="svg-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
-  <symbol id="arrow-up" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></symbol>
-  <symbol id="arrow-ne" viewBox="0 0 24 24"><path d="M5 19 19 5M5 5h14v14"/></symbol>
-  <symbol id="lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"/></symbol>
-  <symbol id="play" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7Z"/></symbol>
-  <symbol id="pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
-  <symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
-  <symbol id="copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="1"/><path d="M16 8V3H3v13h5"/></symbol>
-  <symbol id="music" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2.5"/><ellipse cx="17" cy="16" rx="3" ry="2.5"/></symbol>
-</defs></svg>
-<div class="shell">
-  <header class="header">
-    <a class="brand" href="./" aria-label="Pulse Studio home"><span class="brand-dot"></span>Pulse<span class="brand-period">STUDIO</span></a>
-    <nav aria-label="Main navigation"><a href="#analyzer" class="nav-link active">BPM <span class="nav-dot"></span></a><a href="#toolkit" class="nav-link" data-tool-nav="converter">Converter</a><a href="#toolkit" class="nav-link" data-tool-nav="key">Key Finder</a><a href="#toolkit" class="nav-link" data-tool-nav="cutter">Loop Cutter</a><button class="nav-link" id="open-tap">Tap tempo <span aria-hidden="true">↗</span></button><button class="nav-link" id="open-help">Help <span aria-hidden="true">↗</span></button></nav>
-    
-  </header>
-  <main>
-    <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-copy"><h1 id="hero-title">Find your<br><span>rhythm.</span></h1></div>
-      <div class="hero-art" aria-hidden="true"><div class="circle-grid"><i></i><i></i><i class="outline"></i><i></i><i class="black"></i><i></i><i class="outline"></i><i></i><i></i></div><div class="art-caption"><span>EVERY BEAT COUNTS.</span><span>↙</span></div></div>
-    </section>
-    <section id="analyzer" aria-label="BPM analyzer">
-      <div class="section-label"><h2>01 / BPM ANALYZER</h2></div>
-      <div class="workspace">
-        <div class="upload-panel" id="drop-zone">
-          <input type="file" id="file-input" accept=".wav,.mp3,.mp4,audio/wav,audio/x-wav,audio/mpeg,video/mp4,audio/mp4" aria-label="Select WAV, MP3 or MP4" hidden>
-          <div class="upload-empty" id="upload-empty">
-            <span class="upload-icon"><svg><use href="#arrow-up"/></svg></span>
-            <h3>Drop your track.</h3>
-            <button class="button button-light" id="choose-file">Choose file <svg><use href="#arrow-ne"/></svg></button>
-            <span class="file-limit">WAV, MP3 or MP4 <span>·</span> max. 100 MB / 20 min</span>
-          </div>
-          <div class="processing" id="processing" hidden><div class="loader" aria-hidden="true"><i></i><i></i><i></i></div><h3 id="progress-title">Finding the beat.</h3><p id="progress-detail">Loading audio…</p><div class="progress-line"></div><button class="text-button" id="cancel-analysis">Cancel analysis</button></div>
-          <div class="track-content" id="track-content" hidden>
-            <div class="track-top"><span class="track-type" id="track-type">WAV</span><button class="icon-button" id="remove-file" aria-label="Remove file"><svg><use href="#close"/></svg></button></div>
-            <h3 id="track-name"></h3><p class="track-meta" id="track-meta"></p>
-            <div class="waveform-wrap"><canvas id="waveform" aria-hidden="true"></canvas><input type="range" id="seek" min="0" max="100" value="0" step="0.1" aria-label="Playback position"></div>
-            <div class="player"><button class="play-button" id="play-track" aria-label="Play track"><svg><use href="#play"/></svg></button><span class="player-time"><span id="current-time">0:00</span><span class="time-separator">/</span><span id="total-time">0:00</span></span><button class="text-button replace" id="replace-file">Replace file <span aria-hidden="true">↗</span></button></div>
-          </div>
-          <p class="privacy-note"><svg><use href="#lock"/></svg> Audio stays on your device.</p>
-          <div class="drag-overlay" aria-hidden="true"><span>DROP IT HERE.</span><svg><use href="#arrow-up"/></svg></div>
-        </div>
-        <div class="result-panel" id="result-panel">
-          <div class="result-top"><h3>YOUR TEMPO</h3><span id="result-status">AWAITING TRACK <i></i></span></div>
-          <div class="tempo-circle" id="tempo-circle"><span class="bpm-number" id="bpm-number">—</span><span class="bpm-label">BEATS PER MINUTE</span><i class="orbit-dot"></i></div>
-          <div class="result-empty" id="result-empty"><span>Start with a beat.</span><span aria-hidden="true">↗</span></div>
-          <div class="result-controls" id="result-controls" hidden><div class="tempo-actions"><div class="tempo-multipliers" aria-label="Tempo controls"><button id="half-tempo" title="Half tempo">÷ 2</button><button id="double-tempo" title="Double tempo">× 2</button><button id="reset-tempo" title="Original tempo" hidden>↺</button></div><button class="copy-button" id="copy-bpm" aria-label="Copy BPM"><svg><use href="#copy"/></svg><span>Copy</span></button></div><div class="metronome-row"><button id="metronome" aria-pressed="false"><span class="switch"><i></i></span>Hear tempo</button><span class="beat-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div></div>
-        </div>
-      </div>
-      <div class="message error-message" id="error" role="alert" hidden></div>
-      <p class="result-note" id="result-note" hidden></p>
-      <div class="demo-line"><button id="try-demo">Try demo <span aria-hidden="true">↗</span></button></div>
-    </section>
-    <section id="toolkit" class="toolkit" aria-labelledby="toolkit-title">
-      <div class="section-label"><h2>02 / PRODUCER TOOLKIT</h2></div>
-      <div class="toolkit-heading"><div><h2 id="toolkit-title">Your sound.<br><span>Your rules.</span></h2></div></div>
-      <div class="tool-tabs" role="tablist" aria-label="Production tools">
-        <button class="tool-tab selected" id="tab-converter" role="tab" aria-selected="true" aria-controls="panel-converter" data-tool="converter"><span>01</span> Converter <b>↗</b></button>
-        <button class="tool-tab" id="tab-key" role="tab" aria-selected="false" aria-controls="panel-key" tabindex="-1" data-tool="key"><span>02</span> Key Finder <b>↗</b></button>
-        <button class="tool-tab" id="tab-cutter" role="tab" aria-selected="false" aria-controls="panel-cutter" tabindex="-1" data-tool="cutter"><span>03</span> Loop Cutter <b>↗</b></button>
-        <button class="tool-tab tool-tab-disabled" id="tab-youtube" type="button" role="tab" aria-selected="false" aria-disabled="true" tabindex="-1" disabled><span>04</span> YouTube Audio <b>COMING SOON</b></button>
-      </div>
-      <div class="tool-board">
-        <div class="tool-source" id="tool-drop-zone">
-          <div class="tool-head"><span>01 / SOURCE AUDIO</span><span class="tiny-status"><i></i> LOCAL PROCESSING</span></div>
-          <input type="file" id="tool-file-input" accept=".wav,.mp3,.mp4,.m4a,.aac,.ogg,.flac,.aiff,.aif,audio/*,video/mp4" hidden aria-label="Select audio/video for toolkit">
-          <div class="tool-empty" id="tool-empty"><span class="tool-empty-icon">↗</span><h3>Make some noise.</h3><button class="tool-action tool-action-light" id="tool-select-file">Choose file <span>↗</span></button><span class="tool-muted">MAX. 100 MB / 20 MIN</span></div>
-          <div class="tool-loaded" id="tool-loaded" hidden><div class="tool-file-label"><span id="tool-ext">WAV</span><button id="tool-remove" aria-label="Remove file">×</button></div><h3 id="tool-name"></h3><p id="tool-details"></p><canvas id="tool-waveform" width="720" height="190" role="img" aria-label="Uploaded audio waveform"></canvas><div class="tool-player"><button id="tool-preview" class="tool-play" aria-label="Play audio">▶</button><span id="tool-time">00:00 / 00:00</span><button id="tool-change">Replace ↗</button></div></div>
-          <button class="tool-bpm-reuse" id="tool-reuse-bpm" hidden>Use BPM Analyzer track ↗</button>
-          <p class="tool-source-foot"><svg><use href="#lock"/></svg> Audio stays in your browser.</p>
-        </div>
-        <div class="tool-settings">
-          <div id="panel-converter" class="tool-view" role="tabpanel" aria-labelledby="tab-converter"><div class="tool-view-header"><span>02 / CONVERTER</span><span>FORMAT CONTROL</span></div><h3>Change format.<br><span>Keep creating.</span></h3>
-            <div class="tool-fields"><label>Output format<select id="conv-format"><option value="wav">WAV · uncompressed</option><option value="mp3">MP3 · compressed</option></select></label><label>Sample rate<select id="conv-rate"><option value="44100">44.1 kHz</option><option value="48000" selected>48 kHz</option><option value="96000">96 kHz</option></select></label><label id="conv-depth-box">Bit depth<select id="conv-depth"><option value="16">16-bit PCM</option><option value="24" selected>24-bit PCM</option></select></label><label id="conv-bitrate-box" hidden>MP3 bitrate<select id="conv-bitrate"><option value="128">128 kbps</option><option value="192" selected>192 kbps</option><option value="320">320 kbps</option></select></label></div>
-            <button class="tool-action tool-action-dark" id="conv-export" disabled>Convert & download <span>↗</span></button><p class="tool-footnote" id="conv-status" role="status">Select audio to convert.</p></div>
-          <div id="panel-key" class="tool-view" role="tabpanel" aria-labelledby="tab-key" hidden><div class="tool-view-header"><span>02 / KEY FINDER</span><span>HARMONIC ANALYSIS</span></div><h3>Find the key.<br><span>Build the harmony.</span></h3>
-            <div class="key-idle" id="key-idle"><span class="tool-circle-decoration">♪</span><p>Ready to analyze</p></div><div class="key-result" id="key-result" hidden><div class="key-bubble"><strong id="key-name">—</strong><span id="key-mode">—</span></div><div class="key-extra"><span>CAMELOT</span><strong id="key-camelot">—</strong><span id="key-confidence">—</span></div></div><p class="key-alternatives" id="key-alternatives" hidden></p><button class="tool-action tool-action-dark" id="key-analyze" disabled>Find key <span>↗</span></button><p class="tool-footnote" id="key-status" role="status">Key detection is an estimate.</p></div>
-          <div id="panel-cutter" class="tool-view" role="tabpanel" aria-labelledby="tab-cutter" hidden><div class="tool-view-header"><span>02 / LOOP CUTTER</span><span>PRECISION EDIT</span></div><h3>Cut the loop.<br><span>Keep the groove.</span></h3>
-            <div class="tool-fields"><label>Beat grid (BPM)<input id="cut-bpm" type="number" min="20" max="400" step="0.1" value="120"></label><label>Length (4/4 bars)<select id="cut-bars"><option value="1">1 bar</option><option value="2">2 bars</option><option value="4" selected>4 bars</option><option value="8">8 bars</option><option value="16">16 bars</option><option value="custom">Custom range</option></select></label></div>
-            <div class="cut-sliders"><label>START <output id="cut-start-label">00:00.00</output><input id="cut-start" type="range" min="0" max="100" step="0.01" value="0"></label><label>END <output id="cut-end-label">00:08.00</output><input id="cut-end" type="range" min="0" max="100" step="0.01" value="8"></label></div>
-            <div class="tool-fields cut-bottom"><label>Fade in / out<select id="cut-fade"><option value="0">Off</option><option value="5" selected>5 ms · clean cut</option><option value="20">20 ms</option><option value="100">100 ms</option></select></label><label>WAV bit depth<select id="cut-depth"><option value="16">16-bit PCM</option><option value="24" selected>24-bit PCM</option></select></label></div>
-            <button class="tool-action tool-action-dark" id="cut-export" disabled>Export loop (WAV) <span>↗</span></button><p class="tool-footnote" id="cut-status" role="status">Preview the loop on the left.</p></div>
+<body data-track="none">
+<a class="skip-link" href="#main">Skip to content</a>
 
+
+<header class="nav">
+  <div class="wrap nav__inner">
+    <a class="logo" href="#/home" aria-label="Pulse Studio home">Pulse<b>STUDIO</b></a>
+    <nav aria-label="Primary">
+      <ul class="nav__links">
+        <li><a href="#/analyzer" data-nav="analyzer">Analyze</a></li>
+        <li><a href="#/editor" data-nav="editor">Edit</a></li>
+        <li><a href="#/converter" data-nav="converter">Convert</a></li>
+        <li><a href="#/ai" data-nav="ai">AI Studio</a></li>
+        <li><a href="#/visualizer" data-nav="visualizer">Visuals</a></li>
+      </ul>
+    </nav>
+    <button class="btn btn--primary btn--sm when-empty" type="button" data-load>Open audio</button>
+    <button class="btn btn--sm when-loaded" type="button" data-unload>Replace audio</button>
+  </div>
+  <nav class="subnav" aria-label="Primary (mobile)">
+    <a href="#/analyzer" data-nav="analyzer">Analyze</a>
+    <a href="#/editor" data-nav="editor">Edit</a>
+    <a href="#/converter" data-nav="converter">Convert</a>
+    <a href="#/ai" data-nav="ai">AI Studio</a>
+    <a href="#/visualizer" data-nav="visualizer">Visuals</a>
+  </nav>
+</header>
+
+<main id="main">
+
+<!-- ===================== HOME ===================== -->
+<section class="view" data-view="home">
+  <div class="hero">
+    <div class="wrap">
+      <div class="hero__grid">
+        <div>
+          <p class="eyebrow eyebrow--accent">( Audio workspace · runs in your browser )</p>
+          <h1>Find your <em>rhythm.</em></h1>
+          <p class="hero__lede">Analyze BPM and key, edit, master and export — without installing apps or creating an account.</p>
+          <div class="hero__actions">
+            <button class="btn btn--primary" type="button" data-load data-go="analyzer">Drop a track →</button>
+            <button class="btn" type="button" data-scroll="toolkit">Browse tools</button>
+          </div>
+          <ul class="hero__trust">
+            <li>No account</li><li>Local processing</li><li>Browser based</li>
+          </ul>
+        </div>
+        <button class="dropzone" type="button" id="drop" data-load data-go="analyzer" aria-label="Drop audio here or click to select an audio file">
+          <span class="dropzone__icon" aria-hidden="true">+</span>
+          <span class="dropzone__title">Drop audio here</span>
+          <span class="dropzone__hint">or click to browse · stays on your device</span>
+          <span class="formats" aria-hidden="true"><span>MP3</span><span>WAV</span><span>M4A</span><span>FLAC</span><span>OGG</span></span>
+        </button>
+      </div>
+      <div class="wave" aria-hidden="true" id="wave"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="wrap">
+      <div class="section__head">
+        <div><p class="eyebrow">( 01 / How it works )</p><h2>Three steps. <em>Zero setup.</em></h2></div>
+        <p>Your file is processed in browser memory. Nothing is uploaded unless you choose a cloud tool and approve it.</p>
+      </div>
+      <ol class="stepper">
+        <li><div><strong>Load audio</strong><span>Drop a file or pick one from your device.</span></div></li>
+        <li><div><strong>Run a tool</strong><span>Analyze, edit or enhance in one workspace.</span></div></li>
+        <li><div><strong>Export</strong><span>WAV or MP3 when supported.</span></div></li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="section" id="toolkit">
+    <div class="wrap">
+      <div class="section__head">
+        <div><p class="eyebrow">( 02 / Toolkit )</p><h2>Six tools. <em>One workspace.</em></h2></div>
+        <p>Every tool is labeled so you know whether your audio stays on your device or goes to the cloud.</p>
+      </div>
+      <div class="filters" role="group" aria-label="Filter tools" id="filters">
+        <button class="chip" type="button" data-f="all" aria-pressed="true">All</button>
+        <button class="chip" type="button" data-f="analyze" aria-pressed="false">Analyze</button>
+        <button class="chip" type="button" data-f="edit" aria-pressed="false">Edit</button>
+        <button class="chip" type="button" data-f="export" aria-pressed="false">Export</button>
+        <button class="chip" type="button" data-f="ai" aria-pressed="false">AI</button>
+        <button class="chip" type="button" data-f="visuals" aria-pressed="false">Visuals</button>
+      </div>
+      <div class="grid" id="toolgrid">
+        <a class="card" href="#/analyzer" data-cat="analyze">
+          <div class="card__top"><span class="card__num">01</span><span class="tag tag--local">Local</span></div>
+          <h3>Song Analyzer</h3><p>BPM, musical key, Camelot, approximate chords and beat grid in one pass.</p><span class="card__link">Open Song Analyzer</span>
+        </a>
+        <a class="card" href="#/tagger" data-cat="analyze">
+          <div class="card__top"><span class="card__num">01B</span><span class="tag tag--local">Local</span></div>
+          <h3>Music Tagger</h3><p>Music classification is planned; processing is not connected yet.</p><span class="card__link">Open Music Tagger</span>
+        </a>
+        <a class="card" href="#/editor" data-cat="edit">
+          <div class="card__top"><span class="card__num">02</span><span class="tag tag--local">Local</span></div>
+          <h3>Audio Editor</h3><p>Trim, cut, merge, fade, reverse, gain and parametric EQ.</p><span class="card__link">Open Audio Editor</span>
+        </a>
+        <a class="card" href="#/converter" data-cat="export">
+          <div class="card__top"><span class="card__num">03</span><span class="tag tag--local">Local</span></div>
+          <h3>Audio Converter</h3><p>WAV and MP3 conversion with sample-rate settings.</p><span class="card__link">Open Converter</span>
+        </a>
+        <a class="card card--wide" href="#/ai" data-cat="ai">
+          <div class="card__top"><span class="card__num">04</span><span class="tag tag--cloud">Integration required</span></div>
+          <h3>AI Studio</h3><p>Twelve tools in four groups. Music generation is connected for authorized owners; other integrations are in progress.</p><span class="card__link">Open AI Studio</span>
+        </a>
+        <a class="card" href="#/visualizer" data-cat="visuals">
+          <div class="card__top"><span class="card__num">05</span><span class="tag tag--local">Local</span></div>
+          <h3>Audio Visualizer</h3><p>Waveform, spectrum and audio-reactive visuals. Preview visuals in browser.</p><span class="card__link">Open Visualizer</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="wrap">
+      <div class="section__head">
+        <div><p class="eyebrow">( 03 / Privacy )</p><h2>Your audio stays <em>yours.</em></h2></div>
+        <p>Plain rules, shown on every tool before you run it.</p>
+      </div>
+      <div class="strip">
+        <div><b>Local by default</b><span>Analysis, editing, converting and visuals run in your browser memory.</span></div>
+        <div><b>Cloud asks first</b><span>Cloud AI tools show a permission prompt before anything leaves your device.</span></div>
+        <div><b>No account</b><span>Open a file and start. Nothing to sign up for.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== SONG ANALYZER ===================== -->
+<section class="view editor" data-view="analyzer" hidden>
+  <div class="wrap">
+    <p class="crumbs"><a href="#/home">Tools</a><span>/</span>Analyze</p>
+    <div class="editor__head">
+      <h1>Song <em>Analyzer</em> <span class="tag tag--local">Local</span></h1>
+      <div data-slot="chip"></div>
+    </div>
+    <div class="filters" aria-label="Analysis tools">
+      <a class="chip" href="#/analyzer" aria-current="true">Song Analyzer</a>
+      <a class="chip" href="#/tagger">Music Tagger</a>
+    </div>
+
+    <div data-slot="empty" data-msg="Load a file to see BPM, key, Camelot, chords and beat grid. Takes a few seconds."></div>
+
+    <div class="when-loaded stack">
+      <div class="block" id="an-run" hidden>
+        <div class="status"><span>Analyzing Loaded audio…</span><span id="an-pct">0%</span></div>
+        <div class="progress"><b id="an-bar"></b></div>
+      </div>
+      <div class="stack" id="an-done" hidden>
+        <div class="metrics">
+          <div class="metric metric--hot"><span>BPM</span><b>—</b><small>Confidence pending</small></div>
+          <div class="metric"><span>Key</span><b>—</b><small>Relative: C major</small></div>
+          <div class="metric"><span>Camelot</span><b>—</b><small>Mixes with 7A · 9A · 8B</small></div>
+          <div class="metric"><span>Time sig.</span><b>4 / 4</b><small>Steady tempo</small></div>
+        </div>
+        <div class="block">
+          <div class="row row--between"><h3>Beat grid</h3><span class="note">First beat at 0.21 s · 128 bars</span></div>
+          <div class="beat"><svg id="bg" viewBox="0 0 220 100" preserveAspectRatio="none" aria-label="Waveform with beat grid"></svg></div>
+        </div>
+        <div class="block">
+          <div class="row row--between"><h3>Chord estimation</h3><span class="note">Estimated — verify by ear</span></div>
+          <p class="note">Chord estimation is not available in this build.</p>
+        </div>
+        <div class="row">
+          <a class="btn btn--primary" href="#/editor">Open in Editor →</a>
+          <a class="btn" href="#/tagger">Tag this track</a>
+          <button class="btn" type="button" disabled title="Report export not implemented">Export report</button>
+          <button class="btn" type="button" id="an-rerun">Re-run analysis</button>
         </div>
       </div>
-      
-      <p class="message" id="tool-error" role="alert" hidden></p>
-    </section>
-    
-  </main>
-  <footer><span class="footer-wordmark"><i></i> Pulse</span><button id="open-privacy">Privacy <span aria-hidden="true">↗</span></button></footer>
-</div>
-<dialog id="help-dialog" aria-labelledby="help-title"><button class="dialog-close icon-button" data-close aria-label="Close"><svg><use href="#close"/></svg></button><p class="eyebrow">QUICK START.</p><h2 id="help-title">From track<br>to tempo.</h2><ol class="help-list"><li><strong>Choose WAV, MP3 or MP4.</strong><span>Max 100 MB / 20 min. Use 6+ seconds of audio.</span></li><li><strong>Find the rhythm.</strong><span>Pulse detects the beat locally.</span></li><li><strong>Check by ear.</strong><span>Use the metronome, Tap Tempo, or ÷2 / ×2.</span></li></ol><p class="dialog-footnote">Tempo is an estimate, especially with irregular beats.</p></dialog>
-<dialog id="tap-dialog" aria-labelledby="tap-title"><button class="dialog-close icon-button" data-close aria-label="Close"><svg><use href="#close"/></svg></button><p class="eyebrow">FEEL THE BEAT.</p><h2 id="tap-title">Your hands.<br>Your tempo.</h2><button class="tap-pad" id="tap-pad"><span id="tap-value">TAP</span><span id="tap-hint">Tap the beat</span></button><p class="tap-instruction">Tap four times or press Space.</p><div class="tap-bottom"><span id="tap-count" aria-live="polite">0 taps</span><button id="tap-reset">Reset ↺</button><button id="tap-copy" hidden>Copy BPM ↗</button></div></dialog>
-<dialog id="privacy-dialog" aria-labelledby="privacy-title"><button class="dialog-close icon-button" data-close aria-label="Close"><svg><use href="#close"/></svg></button><p class="eyebrow">PRIVACY FIRST.</p><h2 id="privacy-title">Your track.<br>Your control.</h2><p class="privacy-copy">Audio processing stays in your browser. YouTube Audio is not yet available.</p><p class="privacy-copy">Files are released when removed or when the page closes. The inactive YouTube tool makes no API requests.</p></dialog>
-<div class="sr-only" id="live-status" aria-live="polite"></div><div class="toast" id="toast" role="status" hidden></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== MUSIC TAGGER ===================== -->
+<section class="view editor" data-view="tagger" hidden>
+  <div class="wrap">
+    <p class="crumbs"><a href="#/home">Tools</a><span>/</span>Analyze</p>
+    <div class="editor__head">
+      <h1>Music <em>Tagger</em> <span class="tag tag--local">Not connected</span></h1>
+      <div data-slot="chip"></div>
+    </div>
+    <div class="filters" aria-label="Analysis tools">
+      <a class="chip" href="#/analyzer">Song Analyzer</a>
+      <a class="chip" href="#/tagger" aria-current="true">Music Tagger</a>
+    </div>
+
+    <div data-slot="empty" data-msg="Load a file to get genre, mood and instrument predictions. The model runs on your device."></div>
+
+    <div class="when-loaded block"><h3>Music Tagger</h3><p class="note">Classification model is not connected. No genre, mood or instrument predictions will be invented.</p></div>
+  </div>
+</section>
+
+<!-- ===================== AUDIO EDITOR ===================== -->
+<section class="view editor" data-view="editor" hidden>
+  <div class="wrap">
+    <p class="crumbs"><a href="#/home">Tools</a><span>/</span>Audio Editor</p>
+    <div class="editor__head">
+      <h1>Audio <em>Editor</em> <span class="tag tag--local">Local</span></h1>
+      <div data-slot="chip"></div>
+    </div>
+
+    <div data-slot="empty" data-msg="Load a file to trim, cut, merge, fade, reverse, adjust gain and shape the EQ."></div>
+
+    <div class="when-loaded">
+      <div class="toolbar" role="toolbar" aria-label="Editing tools">
+        <button class="tool" type="button" aria-label="Undo" data-toast="Undo (prototype)">↶ <kbd>⌘Z</kbd></button>
+        <button class="tool" type="button" aria-label="Redo" disabled>↷</button>
+        <i class="toolbar__sep" aria-hidden="true"></i>
+        <button class="tool" type="button" aria-pressed="true">Select <kbd>V</kbd></button>
+        <button class="tool" type="button" aria-pressed="false">Trim <kbd>T</kbd></button>
+        <button class="tool" type="button" aria-pressed="false">Cut <kbd>X</kbd></button>
+        <button class="tool" type="button" aria-pressed="false">Merge</button>
+        <i class="toolbar__sep" aria-hidden="true"></i>
+        <button class="tool" type="button" aria-pressed="false">Fade in</button>
+        <button class="tool" type="button" aria-pressed="false">Fade out</button>
+        <button class="tool" type="button" aria-pressed="false">Reverse</button>
+        <button class="tool" type="button" aria-pressed="false">Gain</button>
+        <span class="toolbar__spacer"></span>
+        <button class="tool" type="button" aria-label="Zoom out" data-toast="Zoom (prototype)">−</button>
+        <button class="tool" type="button" aria-label="Zoom in" data-toast="Zoom (prototype)">+</button>
+      </div>
+
+      <div class="editor__grid">
+        <section class="panel stage" aria-label="Waveform">
+          <div class="ruler" aria-hidden="true"><span>0:00</span><span>0:30</span><span>1:00</span><span>1:30</span><span>2:00</span><span>2:30</span><span>3:00</span><span>3:42</span></div>
+          <div class="wave-wrap">
+            <div class="track"><span class="track__label">L</span><svg id="wl" viewBox="0 0 220 100" preserveAspectRatio="none" aria-hidden="true"></svg></div>
+            <div class="track"><span class="track__label">R</span><svg id="wr" viewBox="0 0 220 100" preserveAspectRatio="none" aria-hidden="true"></svg></div>
+            <div class="selection" role="group" aria-label="Selection 1:02.2 to 1:55.5"><span class="selection__tag">0.0 s</span></div>
+            <div class="playhead" id="playhead"></div>
+          </div>
+          <div class="transport">
+            <button class="tbtn" type="button" aria-label="Back to start" data-toast="Back to start (prototype)">⏮</button>
+            <button class="tbtn tbtn--play" type="button" id="play" aria-label="Play">▶</button>
+            <button class="tbtn" type="button" aria-label="Loop selection" aria-pressed="false" id="loopbtn">⟲</button>
+            <div class="time"><span id="now">0:00.0</span> <small>/ 3:42.0</small></div>
+            <label class="vol">VOL <input type="range" min="0" max="100" value="80" aria-label="Volume"></label>
+          </div>
+          <div class="stage__history">
+            <div class="stage__history-head"><h2>Edit history</h2><span class="tag tag--local">Undo any step</span></div>
+            <ul class="history"><li><span>Edits in this preview are processed locally. Persistent Undo/Redo is not implemented.</span></li></ul>
+          </div>
+        </section>
+
+        <aside class="panel side" aria-label="Properties">
+          <details open><summary>Selection</summary>
+            <div class="details__body">
+              <div class="kv"><div><span>Start</span><b id="sel-start">0:00.0</b></div><div><span>End</span><b id="sel-end">0:00.0</b></div><div><span>Length</span><b id="sel-len">0.0 s</b></div></div>
+              <div class="row"><button class="btn btn--sm" type="button" id="btn-trim">Trim to selection</button><button class="btn btn--sm" type="button" id="btn-cut">Cut</button></div>
+            </div>
+          </details>
+          <details open><summary>Fade &amp; gain</summary>
+            <div class="details__body">
+              <div class="field"><label for="fi">Fade in <output id="fiO">1.5 s</output></label><input id="fi" type="range" min="0" max="10" step="0.1" value="1.5"></div>
+              <div class="field"><label for="fo">Fade out <output id="foO">3.0 s</output></label><input id="fo" type="range" min="0" max="10" step="0.1" value="3"></div>
+              <div class="field"><label for="gn">Gain <output id="gnO">+2.0 dB</output></label><input id="gn" type="range" min="-24" max="12" step="0.5" value="2"></div>
+            </div>
+          </details>
+          <details open><summary>Parametric EQ</summary>
+            <div class="details__body">
+              <div class="eq"><svg viewBox="0 0 400 150" role="img" aria-label="EQ curve"><g id="eqgrid"></g><path id="curve" class="curve"></path><g id="nodes"></g></svg></div>
+              <div class="bands" role="group" aria-label="EQ band">
+                <button class="chip" type="button" data-b="0" aria-pressed="false">Low</button>
+                <button class="chip" type="button" data-b="1" aria-pressed="true">Low-mid</button>
+                <button class="chip" type="button" data-b="2" aria-pressed="false">High-mid</button>
+                <button class="chip" type="button" data-b="3" aria-pressed="false">High</button>
+              </div>
+              <div class="field"><label for="ef">Frequency <output id="efO"></output></label><input id="ef" type="range" min="0" max="1000" step="1"></div>
+              <div class="field"><label for="eg">Gain <output id="egO"></output></label><input id="eg" type="range" min="-12" max="12" step="0.5"></div>
+              <div class="field"><label for="eqq">Q <output id="eqO"></output></label><input id="eqq" type="range" min="0.3" max="8" step="0.1"></div>
+            </div>
+          </details>
+        </aside>
+      </div>
+
+      <section class="exportbar" aria-label="Export">
+        <div><span class="eyebrow">( Filename )</span><input class="input" type="text" id="edit-filename" value="track_edit" aria-label="Filename"></div>
+        <div><span class="eyebrow">( Format )</span>
+          <div class="seg" role="radiogroup" aria-label="Export format">
+            <label><input type="radio" name="efmt" value="mp3"><span>MP3</span></label>
+            <label><input type="radio" name="efmt" value="wav" checked><span>WAV 16-bit</span></label>
+            <label><input type="radio" name="efmt" value="m4a"><span>M4A 192k</span></label>
+            <label><input type="radio" name="efmt" value="flac"><span>FLAC</span></label>
+          </div>
+        </div>
+        <button class="btn btn--primary" type="button" id="edit-export">Export · ~37 MB ↓</button>
+      </section>
+      <p class="statusline"><span class="tag tag--local">Local</span><span>Edited in browser memory — nothing is uploaded.</span><span>M4A/AAC export depends on browser support.</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== CONVERTER ===================== -->
+<section class="view editor" data-view="converter" hidden>
+  <div class="wrap">
+    <p class="crumbs"><a href="#/home">Tools</a><span>/</span>Convert</p>
+    <div class="editor__head">
+      <h1>Audio <em>Converter</em> <span class="tag tag--local">Local</span></h1>
+      <div data-slot="chip"></div>
+    </div>
+
+    <div data-slot="empty" data-msg="Load one or more files to convert between WAV, MP3, FLAC, AAC and OGG."></div>
+
+    <div class="when-loaded split">
+      <div class="block">
+        <h3>Files</h3>
+        <div class="files" id="conv-files"></div>
+        </div>
+        <div class="row" style="margin-top:var(--space-2)"><button class="btn btn--sm" type="button" data-load>+ Add files</button><button class="btn btn--sm" type="button" data-unload>Clear all</button></div>
+      </div>
+
+      <div class="block">
+        <h3>Output</h3>
+        <div class="fields">
+          <div class="fieldblock"><span class="lab">Format</span>
+            <div class="seg" role="radiogroup" aria-label="Output format" id="cfmt">
+              <label><input type="radio" name="cf" value="mp3" checked><span>MP3</span></label>
+              <label><input type="radio" name="cf" value="wav"><span>WAV</span></label>
+              <label><input type="radio" name="cf" value="flac"><span>FLAC</span></label>
+              <label><input type="radio" name="cf" value="aac"><span>AAC</span></label>
+              <label><input type="radio" name="cf" value="ogg"><span>OGG</span></label>
+            </div>
+          </div>
+          <div class="fields fields--2">
+            <div class="fieldblock"><label for="csr">Sample rate</label>
+              <select class="input" id="csr"><option value="44100">44.1 kHz</option><option value="48000">48 kHz</option><option value="88200">88.2 kHz</option><option value="96000">96 kHz</option></select></div>
+            <div class="fieldblock" id="cbr-wrap"><label for="cbr">Bitrate</label>
+              <select class="input" id="cbr"><option value="128">128 kbps</option><option value="192">192 kbps</option><option value="256" selected>256 kbps</option><option value="320">320 kbps</option></select></div>
+          </div>
+          <p class="note" id="cest">Estimated output: ~11 MB total</p>
+          <button class="btn btn--primary" type="button" id="cgo">Convert audio</button>
+          <div id="cprog" hidden>
+            <div class="status"><span id="cmsg">Converting…</span><span id="cpct">0%</span></div>
+            <div class="progress"><b id="cbar"></b></div>
+          </div>
+          <div id="cdone" hidden class="stack">
+            <p><span class="tag tag--local">Done</span> &nbsp;Audio converted in your browser.</p>
+            <div class="row"><button class="btn btn--primary" type="button" data-unavailable="File is downloaded directly after conversion">Download all (.zip) ↓</button><button class="btn" type="button" id="cagain">Convert again</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== AI STUDIO HUB ===================== -->
+<section class="view editor" data-view="ai" hidden>
+  <div class="wrap">
+    <p class="crumbs"><a href="#/home">Tools</a><span>/</span>AI Studio</p>
+    <div class="editor__head">
+      <h1>AI <em>Studio</em> <span class="tag tag--cloud">Integration required</span></h1>
+      <div data-slot="chip"></div>
+    </div>
+    <p style="color:var(--ink-2);max-width:62ch">Twelve tools in four groups. The music generator sends your prompt to MusicGPT; it never uploads your existing audio.</p>
+    <div id="ai-groups"></div>
+  </div>
+</section>
+
+<!-- ===================== AI TOOL (dynamic) ===================== -->
+<section class="view editor" data-view="ai-tool" hidden>
+  <div class="wrap">
+    <p class="crumbs"><a href="#/home">Tools</a><span>/</span><a href="#/ai">AI Studio</a><span>/</span><span id="ai-crumb" style="margin:0"></span></p>
+    <div class="editor__head">
+      <h1 id="ai-title" tabindex="-1"></h1>
+      <div data-slot="chip"></div>
+    </div>
+    <p id="ai-desc" style="color:var(--ink-2);max-width:62ch;margin-bottom:var(--space-3)"></p>
+
+    <div data-slot="empty" data-msg="Load a file to use this tool."></div>
+
+    <div class="when-loaded split" id="ai-tool-workspace">
+      <div class="block">
+        <div class="row row--between" style="margin-bottom:var(--space-2)"><h3 style="margin:0">Settings</h3><span class="tag" id="ai-tag"></span></div>
+        <div class="fields" id="ai-controls"></div>
+        <div class="row" style="margin-top:var(--space-3)"><button class="btn btn--primary" type="button" id="ai-run">Run</button><button class="btn" type="button" data-toast="Settings reset (prototype)">Reset</button></div>
+      </div>
+      <div class="block">
+        <h3>Result</h3>
+        <p id="ai-idle" class="note">Nothing yet. Adjust the settings and press Run.</p>
+        <div id="ai-prog" hidden>
+          <div class="status"><span id="ai-msg">Processing…</span><span id="ai-pct">0%</span></div>
+          <div class="progress"><b id="ai-bar"></b></div>
+        </div>
+        <div id="ai-res" class="result" hidden>
+          <div class="row row--between">
+            <div class="seg" role="radiogroup" aria-label="Compare">
+              <label><input type="radio" name="ab" value="before"><span>Before</span></label>
+              <label><input type="radio" name="ab" value="after" checked><span>After</span></label>
+            </div>
+            <span class="tag tag--local" id="ai-done-tag">Ready</span>
+          </div>
+          <div class="beat"><svg id="aiw" viewBox="0 0 220 100" preserveAspectRatio="none" aria-label="Result waveform"></svg></div>
+          <div class="row"><button class="btn btn--primary" type="button" data-unavailable="AI exports are not connected">Download ↓</button><a class="btn" href="#/editor">Open in Editor</a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== VISUALIZER ===================== -->
+<section class="view editor viz" data-view="visualizer" hidden>
+  <div class="wrap">
+    <p class="crumbs"><a href="#/home">Tools</a><span>/</span>Visuals</p>
+    <div class="editor__head">
+      <h1>Audio <em>Visualizer</em> <span class="tag tag--local">Local</span></h1>
+      <div data-slot="chip"></div>
+    </div>
+
+    <div data-slot="empty" data-msg="Load a file to generate waveform, spectrum and audio-reactive visuals."></div>
+
+    <div class="when-loaded editor__grid">
+      <section class="panel stage" aria-label="Preview">
+        <canvas id="viz" width="1280" height="720" aria-label="Animated visualization preview"></canvas>
+        <div class="transport">
+          <button class="tbtn tbtn--play" type="button" id="vplay" aria-label="Pause">❚❚</button>
+          <div class="time"><small>Loaded audio</small></div>
+        </div>
+      </section>
+      <aside class="panel side" aria-label="Visual settings">
+        <details open><summary>Style</summary>
+          <div class="details__body">
+            <div class="seg" role="radiogroup" aria-label="Style" id="vstyle">
+              <label><input type="radio" name="vs" value="bars" checked><span>Bars</span></label>
+              <label><input type="radio" name="vs" value="wave"><span>Waveform</span></label>
+              <label><input type="radio" name="vs" value="circle"><span>Circle</span></label>
+            </div>
+            <div class="fieldblock"><span class="lab">Color</span>
+              <div class="swatches" id="vcol">
+                <button class="swatch" type="button" style="background:#ff4d1c" data-c="#ff4d1c" aria-pressed="true" aria-label="Red"></button>
+                <button class="swatch" type="button" style="background:#f4f2ee" data-c="#f4f2ee" aria-pressed="false" aria-label="White"></button>
+                <button class="swatch" type="button" style="background:#4fcf93" data-c="#4fcf93" aria-pressed="false" aria-label="Green"></button>
+              </div>
+            </div>
+            <div class="field"><label for="vsens">Sensitivity <output id="vsensO">70%</output></label><input id="vsens" type="range" min="10" max="100" value="70"></div>
+          </div>
+        </details>
+        <details open><summary>Format</summary>
+          <div class="details__body">
+            <div class="seg" role="radiogroup" aria-label="Aspect ratio" id="vasp">
+              <label><input type="radio" name="va" value="16:9" checked><span>16:9</span></label>
+              <label><input type="radio" name="va" value="9:16"><span>9:16</span></label>
+              <label><input type="radio" name="va" value="1:1"><span>1:1</span></label>
+            </div>
+            <div class="row"><button class="btn btn--sm" type="button" disabled title="PNG export not implemented">Export PNG</button><button class="btn btn--primary btn--sm" type="button" disabled title="Video export not implemented">Export video</button></div>
+            <p class="note">Video export depends on browser support.</p>
+          </div>
+        </details>
+      </aside>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer__grid">
+      <div><a class="logo" href="#/home">Pulse<b>STUDIO</b></a><p style="color:var(--ink-2);margin-top:.75rem;max-width:34ch">Focused audio tools for producers. Analyze, edit and export in one browser workspace.</p></div>
+      <div><h4>Analysis</h4><ul><li><a href="#/analyzer">Song Analyzer</a></li><li><a href="#/tagger">Music Tagger</a></li></ul></div>
+      <div><h4>Edit &amp; Export</h4><ul><li><a href="#/editor">Audio Editor</a></li><li><a href="#/converter">Audio Converter</a></li></ul></div>
+      <div><h4>AI Studio</h4><ul><li><a href="#/ai/mastering">AI Mastering</a></li><li><a href="#/ai/stems">Stem Extraction</a></li><li><a href="#/ai">All 12 tools</a></li></ul></div>
+      <div><h4>Visuals</h4><ul><li><a href="#/visualizer">Audio Visualizer</a></li></ul></div>
+    </div>
+    <div class="footer__bottom"><span>© 2026 PULSE STUDIO</span><span>Built for the sound you make.</span><a href="#/home">Back to top ↑</a></div>
+  </div>
+</footer>
+
+<dialog class="modal" id="consent" aria-labelledby="consent-t">
+  <h2 id="consent-t">Upload audio to run this tool?</h2>
+  <p>This cloud tool is not connected in this deployment.</p>
+  <ul>
+    <li>Sent: Loaded audio (3:42)</li>
+    <li>Processing provider: not configured</li>
+    <li>No upload will be performed</li>
+  </ul>
+  <div class="row"><button class="btn btn--sm" type="button" id="consent-no">Cancel</button><button class="btn btn--primary btn--sm" type="button" id="consent-yes" disabled>Unavailable</button></div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div><div class="sr-only" id="live-status" aria-live="polite"></div><div class="message error-message" id="error" role="alert" hidden></div><input id="audio-file-input" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac,.aiff" hidden>
+
+
 <script>
 (() => {
   'use strict';
@@ -1371,418 +1763,166 @@ function initStudioTools() {
   }
 }
 
-  
-const $ = selector => document.querySelector(selector);
-const $$ = selector => document.querySelectorAll(selector);
-
-const state = {file:null, generation:0, busy:false, worker:null, cancelWorker:null, buffer:null, result:null, keyResult:null};
-
-function announce(text) { if($('#live-status')) $('#live-status').textContent=text; }
-function showError(message) { if($('#error')) { $('#error').textContent=message; $('#error').hidden=false; } else { toast("Error: " + message); } }
-
-let toastTimer;
-function toast(text) { 
-  if(!$('#toast')) return;
-  $('#toast').textContent=text; 
-  $('#toast').classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>{ $('#toast').classList.remove('show'); }, 3000); 
+  const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const state = {file:null,buffer:null,result:null,key:null,worker:null,busy:false,seq:0};
+const toast = message => { const el=$('#toast'); if(!el)return; el.textContent=message; el.classList.add('show'); clearTimeout(toast.timer); toast.timer=setTimeout(()=>el.classList.remove('show'),3500); };
+const fmt = t => `${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}.${Math.floor(t%1*10)}`;
+const name = () => state.file?.name || 'No audio loaded';
+function updateTrack(){
+  document.body.dataset.track=state.buffer?'loaded':'none';
+  $$('.filechip').forEach(el=>{ const b=el.querySelector('b'); if(b) b.textContent=name(); const meta=el.querySelector('span'); if(meta && state.buffer) meta.textContent=`${fmt(state.buffer.duration)} · ${(state.buffer.sampleRate/1000).toFixed(1)} kHz`; });
+  $('#an-rerun').disabled=!state.buffer;
 }
-
-function setBusy(busy) {
-  state.busy = busy;
-  if($('#an-run')) $('#an-run').hidden = !busy;
-  if($('#an-done')) $('#an-done').hidden = true;
-  if(busy && $('#an-pct')) {
-      $('#an-pct').textContent = '0%';
-      $('#an-bar').style.width = '0%';
-  }
+function showError(err){const el=$('#error'); el.textContent=typeof err==='string'?err:(err.message || 'Processing error'); el.hidden=false; toast(el.textContent);}
+function reset(){state.seq++;state.worker?.terminate();state.worker=null;state.file=null;state.buffer=null;state.result=null;state.key=null;state.busy=false;$('#an-run').hidden=true;$('#an-done').hidden=true;$('#error').hidden=true;updateTrack();window.dispatchEvent(new Event('pulse:bpm-track-ready'));}
+function waveform(svg, arr){if(!svg)return; const p=arr||Array(220).fill(0); svg.setAttribute('viewBox','0 0 220 100'); svg.innerHTML=Array.from({length:220},(_,i)=>{const h=Math.max(2,Math.min(96,(p[Math.min(p.length-1,Math.floor(i*p.length/220))]||0)*90));return `<rect x="${i}" y="${(100-h)/2}" width=".64" height="${h}" rx=".15"/>`;}).join('');}
+function beatGrid(){const svg=$('#bg');if(!svg)return;waveform(svg,state.result?.waveform);svg.insertAdjacentHTML('beforeend',Array.from({length:32},(_,i)=>`<line class="${i%4===0?'bar':''}" x1="${i*220/32}" x2="${i*220/32}" y1="0" y2="100"/>`).join(''));}
+function drawResult(){const r=state.result, k=state.key; if(!r)return;
+  $('.metric--hot b').textContent=String(r.bpm);$('.metric--hot small').textContent=typeof r.confidence==='number'?`Confidence ${Math.round(r.confidence*100)}%`:'Estimated tempo';
+  const m=$$('.metric b');if(k?.primary){m[1].textContent=k.primary.name+' '+k.primary.mode;m[2].textContent=k.primary.camelot;}else{m[1].textContent='Unavailable';m[2].textContent='—';}
+  $('#an-run').hidden=true;$('#an-done').hidden=false;beatGrid();
 }
-
-function reset() {
-  state.generation++; state.cancelWorker?.(); state.cancelWorker=null; state.worker?.terminate(); state.worker=null;
-  state.file = null; state.buffer = null; state.result = null; state.keyResult = null;
-  window.dispatchEvent(new Event('pulse:bpm-track-ready'));
-  setBusy(false);
-  if($('#an-run')) $('#an-run').hidden = true;
-  if($('#an-done')) $('#an-done').hidden = true;
-  setTrack(false);
-}
-
-async function processFile(file) {
-  if(!file || state.busy) return;
-  if($('#error')) $('#error').hidden = true;
-  if(!/\.(wav|mp3|mp4|m4a|aac|ogg|flac|aiff|aif)$/i.test(file.name)){ showError('Unsupported format. Try WAV or MP3.'); return; }
-  if(file.size > 100*1024*1024){ showError('File exceeds 100 MB.'); return; }
-  
-  reset();
-  const generation = state.generation;
-  setBusy(true);
-  
-  try {
-    const OfflineContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-    if(!OfflineContext) throw new Error('Audio analysis is not supported in this browser.');
-    let buffer;
-    try { 
-        const ctx = window.AudioContext ? new window.AudioContext() : new window.webkitAudioContext();
-        buffer = await ctx.decodeAudioData(await file.arrayBuffer()); 
-    } catch { throw new Error('Could not decode audio.'); }
-    
-    if(generation !== state.generation) return;
-    if(buffer.duration > 1200) throw new Error('Track exceeds 20 minutes.');
-    if(buffer.duration < 2) throw new Error('Track too short.');
-    
-    // Prepare for BPM
-    let bestChannel = 0, bestEnergy = -1;
-    for(let ch=0; ch<buffer.numberOfChannels; ch++) {
-        const data = buffer.getChannelData(ch);
-        let energy = 0;
-        for(let i=0; i<data.length; i+=32) energy += data[i]*data[i];
-        if(energy > bestEnergy) { bestEnergy = energy; bestChannel = ch; }
-    }
-    const samples = buffer.getChannelData(bestChannel).slice();
-    
-    // Prepare for Key Detection
-    const sr = buffer.sampleRate, step = Math.max(1, Math.round(sr/11025)), dstRate = sr/step;
-    const input = buffer.getChannelData(0), segments = [];
-    const duration = buffer.duration, chunk = Math.min(duration, 10), positions = duration>18 ? [.08,.43,.78] : [0];
-    for(const p of positions){
-        const start = Math.max(0, Math.min(input.length - Math.floor(chunk*sr), Math.floor(duration*p*sr)));
-        const count = Math.floor(chunk*dstRate), data = new Float32Array(count);
-        for(let i=0; i<count; i++) data[i] = input[Math.min(input.length-1, start+i*step)];
-        segments.push(data);
-    }
-    const merged = new Float32Array(segments.reduce((a,b)=>a+b.length, 0));
-    let off = 0; for(const c of segments){ merged.set(c, off); off+=c.length; }
-
-    const bpmPromise = new Promise((resolve, reject) => {
-      const worker = createAnalysisWorker();
-      state.worker = worker;
-      const timeout = setTimeout(()=>{ worker.terminate(); reject(new Error('TIMEOUT')); }, 60000);
-      state.cancelWorker = ()=>{ clearTimeout(timeout); worker.terminate(); reject(new Error('CANCELLED')); };
-      worker.onmessage = ({data})=>{ clearTimeout(timeout); worker.terminate(); if(state.worker===worker){ state.worker=null; state.cancelWorker=null; } data.error ? reject(new Error(data.error)) : resolve(data.result); };
-      worker.onerror = ()=>{ clearTimeout(timeout); worker.terminate(); state.cancelWorker=null; reject(new Error('Failed')); };
-      worker.postMessage({samples, sampleRate:buffer.sampleRate}, [samples.buffer]);
-      
-      let p=0;
-      let pTimer=setInterval(()=>{
-          p+=Math.random()*15; if(p>95) p=95;
-          if(state.worker===null) { clearInterval(pTimer); p=100; }
-          if($('#an-bar')) { $('#an-bar').style.width = p + '%'; $('#an-pct').textContent = Math.round(p) + '%'; }
-      }, 300);
+async function processFile(file){if(!file)return;if(file.size>100*1024*1024){showError('Maximum audio size is 100 MB.');return;}
+  reset();const seq=state.seq;state.busy=true;state.file=file;$('#an-run').hidden=false;$('#an-pct').textContent='0%';$('#an-bar').style.width='0%';updateTrack();location.hash='#/analyzer';
+  try{
+    const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)throw Error('AudioContext unsupported');const ctx=new Ctx();let buffer;
+    try{buffer=await ctx.decodeAudioData(await file.arrayBuffer());}finally{await ctx.close().catch(()=>{});}
+    if(seq!==state.seq)return;if(buffer.duration>1200)throw Error('Maximum track length is 20 minutes.');if(buffer.duration<2)throw Error('Track must be at least 2 seconds.');
+    const samples=buffer.getChannelData(0).slice();let keyInput=buffer.getChannelData(0);const stride=Math.max(1,Math.floor(buffer.sampleRate/11025));const n=Math.min(Math.floor(keyInput.length/stride),11025*28);const reduced=new Float32Array(n);for(let i=0;i<n;i++)reduced[i]=keyInput[i*stride];
+    const bpm=await new Promise((resolve,reject)=>{
+      const worker=createAnalysisWorker();state.worker=worker;
+      const timer=setTimeout(()=>{worker.terminate();reject(Error('BPM analysis timed out'));},60000);
+      worker.onmessage=e=>{clearTimeout(timer);worker.terminate();state.worker=null;e.data.error?reject(Error(e.data.error)):resolve(e.data.result);};
+      worker.onerror=()=>{clearTimeout(timer);worker.terminate();state.worker=null;reject(Error('BPM worker failed'));};
+      worker.postMessage({samples,sampleRate:buffer.sampleRate},[samples.buffer]);
     });
-
-    const keyPromise = new Promise((resolve) => {
-      const kworker = createBundledKeyWorker();
-      kworker.onmessage = ({data})=>{ kworker.terminate(); data.error ? resolve(null) : resolve(data.result); };
-      kworker.onerror = ()=>{ kworker.terminate(); resolve(null); };
-      kworker.postMessage({samples:merged, sampleRate:dstRate}, [merged.buffer]);
+    if(seq!==state.seq)return;state.result=bpm;state.buffer=buffer;
+    state.key=await new Promise(resolve=>{
+      const worker=createBundledKeyWorker();
+      const timer=setTimeout(()=>{worker.terminate();resolve(null);},20000);
+      worker.onmessage=e=>{clearTimeout(timer);worker.terminate();resolve(e.data.error?null:e.data.result);};worker.onerror=()=>{clearTimeout(timer);worker.terminate();resolve(null);};
+      worker.postMessage({samples:reduced,sampleRate:buffer.sampleRate/stride},[reduced.buffer]);
     });
-    
-    const [result, keyResult] = await Promise.all([bpmPromise, keyPromise]);
-    
-    if(generation !== state.generation) return;
-    state.file = file; state.buffer = buffer; state.result = result; state.keyResult = keyResult;
-    window.dispatchEvent(new CustomEvent('pulse:file-loaded', {detail: {file: file, buffer: buffer}}));
-    setBusy(false);
-    
-    renderResult(file);
-    
-  } catch(error) {
-    if(generation !== state.generation) return;
-    setBusy(false); showError(error.message);
-  }
+    if(seq!==state.seq)return;window.dispatchEvent(new CustomEvent('pulse:file-loaded',{detail:{file,buffer}}));updateTrack();drawResult();toast('Audio analyzed locally');
+  }catch(e){if(seq===state.seq){$('#an-run').hidden=true;showError(e);}}finally{if(seq===state.seq)state.busy=false;}
 }
-
-function renderResult(file) {
-  if($$('.metric--hot b')[0]) $$('.metric--hot b')[0].textContent = state.result.bpm;
-  if(state.keyResult && $$('.metric b')[1] && $$('.metric b')[2]) {
-      $$('.metric b')[1].textContent = state.keyResult.primary.name + (state.keyResult.primary.mode === 'minor' ? ' minor' : ' major');
-      $$('.metric b')[2].textContent = state.keyResult.primary.camelot;
-  }
-  
-  setTrack(true, file.name);
-  if($('#an-run')) $('#an-run').hidden = true; 
-  if($('#an-done')) $('#an-done').hidden = false;
-  drawBeat(state.result.waveform);
-}
-
-function drawBeat(waveform) {
-  var svg = $('#bg'); 
-  if(!svg) return;
-  var s = '';
-  if(waveform) {
-      const len = waveform.length;
-      for (let i = 0; i < len; i++) {
-        let h = Math.max(4, waveform[i] * 96);
-        s += `<rect x="${i}" y="${((100 - h) / 2).toFixed(1)}" width="0.62" height="${h.toFixed(1)}" rx="0.2"/>`;
-      }
-  } else {
-      for (let i = 0; i < 220; i++) s += `<rect x="${i}" y="48" width="0.62" height="4" rx="0.2"/>`;
-  }
-  var lines = '';
-  for (var i = 0; i < 32; i++) {
-    var x = (i * 220 / 32 + 1).toFixed(1);
-    lines += `<line class="${(i % 4 === 0 ? 'bar' : '')}" x1="${x}" x2="${x}" y1="0" y2="100"/>`;
-  }
-  svg.innerHTML = s + lines;
-}
-
-function setTrack(v, name = "night-drive_demo.wav") {
-  document.body.dataset.track = v ? 'loaded' : 'none';
-  if (v) {
-      $$('#loaded-filename').forEach(el => el.textContent = name);
-  }
-}
-
-/* EQ Visualization & State */
-var eqW = 400, eqH = 150, eqMID = 75, eqFMIN = 20, eqFMAX = 20000;
-var eqBands = [{ f: 80, g: 0, q: 1.0 }, { f: 400, g: 0, q: 1.4 }, { f: 3000, g: 0, q: 1.2 }, { f: 10000, g: 0, q: 0.8 }];
-var eqSel = 1;
-function eqX(f) { return eqW * (Math.log(f / eqFMIN) / Math.log(eqFMAX / eqFMIN)); }
-function eqY(g) { return eqMID - g * (eqMID / 14); }
-
-function drawEq() {
-  const eqgrid = $('#eqgrid'), curve = $('#curve'), nodes = $('#nodes');
-  if(!eqgrid || !curve || !nodes) return;
-  
-  if(eqgrid.innerHTML === '') {
-      let gr = '';
-      [20, 100, 1000, 10000].forEach(f => {
-        gr += `<line class="gridline" x1="${eqX(f)}" x2="${eqX(f)}" y1="0" y2="${eqH}"/><text x="${eqX(f) + 3}" y="${eqH - 4}">${f >= 1000 ? (f / 1000) + 'k' : f}</text>`;
-      });
-      gr += `<line class="gridline zero" x1="0" x2="${eqW}" y1="${eqMID}" y2="${eqMID}"/>`;
-      [12, -12].forEach(d => { gr += `<text x="3" y="${eqY(d) + (d > 0 ? 10 : -3)}">${d > 0 ? '+' : ''}${d}</text>`; });
-      eqgrid.innerHTML = gr;
-  }
-  
-  const pts = [];
-  for (let x = 0; x <= eqW; x += 4) {
-    let g = 0; 
-    eqBands.forEach(b => { 
-        const d = (x - eqX(b.f)) / (eqW / 5.5 / b.q); 
-        g += b.g * Math.exp(-d * d); 
-    });
-    pts.push([x, eqY(Math.max(-13, Math.min(13, g)))]);
-  }
-  curve.setAttribute('d', `M0,${eqMID} ` + pts.map(p => `L${p[0]},${p[1].toFixed(1)}`).join(' ') + ` L${eqW},${eqMID} Z`);
-  nodes.innerHTML = eqBands.map((b, i) => `<circle class="node${i === eqSel ? ' is-active' : ''}" cx="${eqX(b.f).toFixed(1)}" cy="${eqY(b.g).toFixed(1)}" r="${i === eqSel ? 7 : 5.5}"/>`).join('');
-  
-  const b = eqBands[eqSel];
-  if($('#ef')) {
-      $('#ef').value = Math.round(1000 * Math.log(b.f / eqFMIN) / Math.log(eqFMAX / eqFMIN)); 
-      $('#eg').value = b.g; 
-      $('#eqq').value = b.q;
-      $('#efO').textContent = b.f >= 1000 ? (b.f / 1000).toFixed(1) + ' kHz' : Math.round(b.f) + ' Hz';
-      $('#egO').textContent = (b.g > 0 ? '+' : '') + b.g.toFixed(1) + ' dB'; 
-      $('#eqO').textContent = b.q.toFixed(1);
-  }
-}
-window.getPulseEQ = () => eqBands;
-
-// Wire EQ UI
-if($('#ef')) {
-    $('#ef').addEventListener('input', e => { eqBands[eqSel].f = eqFMIN * Math.pow(eqFMAX / eqFMIN, e.target.value / 1000); drawEq(); });
-    $('#eg').addEventListener('input', e => { eqBands[eqSel].g = +e.target.value; drawEq(); });
-    $('#eqq').addEventListener('input', e => { eqBands[eqSel].q = +e.target.value; drawEq(); });
-    $$('.bands .chip').forEach(c => { 
-        c.addEventListener('click', () => { 
-            eqSel = +c.dataset.b; 
-            $$('.bands .chip').forEach(x => x.setAttribute('aria-pressed', x === c ? 'true' : 'false')); 
-            drawEq(); 
-        }); 
-    });
-    drawEq();
-}
-
-/* AI Studio / Fake Tagger interaction */
-var AI = [
-  { g: 'Master & mix', items: [
-    { id: 'mastering', name: 'AI Mastering', cloud: true, d: 'Balance loudness, tone and stereo image for release-ready masters.', o: [['range', 'Loudness target', -14, -24, -6, ' LUFS'], ['select', 'Tone', ['Warm', 'Neutral', 'Bright']], ['range', 'Limiter ceiling', -1, -3, 0, ' dBTP']] }
-  ]}
+// All controls load a real user file. No fictional demo track.
+const input=$('#audio-file-input');document.addEventListener('click',e=>{
+  if(e.target.closest('[data-load]')){e.preventDefault();input.click();return;}
+  if(e.target.closest('[data-unload]')){e.preventDefault();reset();return;}
+  if(e.target.closest('[data-unavailable]')){e.preventDefault();toast(e.target.closest('[data-unavailable]').dataset.unavailable);return;}
+  if(e.target.closest('[data-toast]')){e.preventDefault();toast('This action is not connected in the current preview.');return;}
+  if(e.target.closest('[data-scroll]')){$('#'+e.target.closest('[data-scroll]').dataset.scroll)?.scrollIntoView({behavior:'smooth'});}
+});
+input.addEventListener('change',()=>{if(input.files[0])processFile(input.files[0]);input.value='';});
+const dz=$('#drop');['dragenter','dragover'].forEach(type=>dz.addEventListener(type,e=>{e.preventDefault();dz.classList.add('is-dragover')}));['dragleave','drop'].forEach(type=>dz.addEventListener(type,e=>{e.preventDefault();dz.classList.remove('is-dragover');if(type==='drop' && e.dataTransfer.files[0])processFile(e.dataTransfer.files[0]);}));
+$('#an-rerun').addEventListener('click',()=>{if(state.file)processFile(state.file)});
+$$('#filters .chip').forEach(button=>button.onclick=()=>{$$('#filters .chip').forEach(x=>x.setAttribute('aria-pressed',String(button===x)));$$('#toolgrid .card').forEach(c=>c.hidden=button.dataset.f!=='all'&&c.dataset.cat!==button.dataset.f);});
+// Keep reference layout and all twelve tool cards. Cloud tools never simulate uploaded results.
+const AI=[
+  ['Master & mix',[['mastering','AI Mastering',true],['mix','Mix Assistant',true],['stereo','Stereo Lab',false]]],
+  ['Voice & stems',[['vocal','Vocal Studio',true],['stems','Stem Extraction',true],['repair','Audio Repair',false]]],
+  ['Creative',[['beat','Beat Lab',false],['fx','Smart FX',false],['pitch','Pitch & Time',false]]],
+  ['Generate & clean',[['lyrics','Lyrics Generator',true],['music','AI Music Generator',true],['watermark','Watermark Cleaner',false]]]
 ];
-var AIMAP = {}; AI.forEach(grp => grp.items.forEach(t => { t.g = grp.g; AIMAP[t.id] = t; }));
-if($('#ai-groups')) {
-  $('#ai-groups').innerHTML = AI.map(grp => `<div class="group"><h2>${grp.g} <small>${grp.items.length} tools</small></h2><div class="grid">${grp.items.map(t => `<a class="card card--tool" href="#/ai/${t.id}"><div class="card__top"><span class="card__num">${t.g.toUpperCase()}</span><span class="tag ${t.cloud ? 'tag--cloud">Cloud' : 'tag--local">Local'}</span></div><h3>${t.name}</h3><p>${t.d}</p><span class="card__link">Open ${t.name}</span></a>`).join('')}</div></div>`).join('');
+const aiMap={};for(const [group,items] of AI)for(const [id,label,cloud] of items)aiMap[id]={id,label,cloud,group};
+$('#ai-groups').innerHTML=AI.map(([group,items])=>`<div class="group"><h2>${group}<small>${items.length} tools</small></h2><div class="grid">${items.map(([id,label,cloud])=>`<a class="card card--tool" href="#/ai/${id}"><div class="card__top"><span class="card__num">${group.toUpperCase()}</span><span class="tag ${cloud?'tag--cloud':'tag--local'}">${cloud?'Cloud':'Local'}</span></div><h3>${label}</h3><p>${id==='music'?'Generate from prompts using MusicGPT with owner-only access.':'Integration pending. This control will not simulate processing.'}</p><span class="card__link">View ${label}</span></a>`).join('')}</div></div>`).join('');
+let musicTicket=null,musicPollTimer=null,musicPollCount=0;
+function stopMusicPolling(){clearTimeout(musicPollTimer);musicPollTimer=null;musicTicket=null;musicPollCount=0;}
+function renderMusicUI(){
+  $('#ai-title').textContent='AI Music Generator';
+  $('#ai-desc').textContent='Generate a new song from a prompt. MusicGPT processes this in the cloud. Each request can incur credits for two variations.';
+  $('#ai-tag').textContent='Cloud · paid';$('#ai-tag').className='tag tag--cloud';
+  $('#ai-controls').innerHTML=`
+    <div class="fieldblock"><label for="music-prompt">Music prompt (max. 280 characters)</label><textarea class="input" id="music-prompt" rows="4" maxlength="280" placeholder="Dark instrumental lo-fi trap, cold synths, heavy 808 bass, 150 BPM" required style="resize:vertical"></textarea></div>
+    <div class="fieldblock"><label for="music-style">Style</label><select class="input" id="music-style"><option>Dark trap</option><option>Lo-fi</option><option>Hip-hop</option><option>Electronic</option><option>Ambient</option><option>House</option><option>Pop</option></select></div>
+    <div class="fieldblock"><label for="music-length">Duration (experimental) <output id="music-length-label">60 s</output></label><input type="range" id="music-length" min="30" max="180" step="15" value="60"></div>
+    <div class="fieldblock"><label for="music-instrumental"><input id="music-instrumental" type="checkbox" checked> Instrumental only</label></div>
+    <div class="fieldblock"><label for="music-access">Owner access code</label><input class="input" id="music-access" type="password" autocomplete="off" placeholder="Owner-only authorization"><p class="note">Separate from your MusicGPT API key. The API key stays on the server.</p></div>
+    <p class="note">A charge may occur when you press Generate. Do not retry a request after a network timeout without checking your MusicGPT dashboard.</p>`;
+  $('#music-length').oninput=e=>$('#music-length-label').textContent=e.target.value+' s';
+  $('#ai-run').disabled=false;$('#ai-run').textContent='Generate music';
+  $('#ai-tool-workspace').classList.remove('when-loaded');
+  $('#ai-idle').hidden=false;$('#ai-idle').textContent='Enter a prompt, then press Generate music.';
+  $('#ai-prog').hidden=true;$('#ai-res').hidden=true;
+  const empty=$('[data-view="ai-tool"] .when-empty');if(empty)empty.hidden=true;
 }
-var aiTimer;
-function startAi() {
-  $('#ai-idle').hidden = true; $('#ai-res').hidden = true; $('#ai-prog').hidden = false;
-  var p = 0, bar = $('#ai-bar'); bar.style.width = '0'; clearInterval(aiTimer);
-  aiTimer = setInterval(() => {
-    p += 4 + Math.random() * 7;
-    if (p >= 100) { p = 100; clearInterval(aiTimer); $('#ai-prog').hidden = true; $('#ai-res').hidden = false; drawBeat(); }
-    bar.style.width = p + '%'; $('#ai-pct').textContent = Math.round(p) + '%';
-  }, 110);
+function renderMusicTracks(tracks){
+  const wrapper=$('#ai-res');wrapper.replaceChildren();
+  tracks.forEach((track,i)=>{
+    const box=document.createElement('div');box.className='block';
+    const title=document.createElement('h3');title.textContent=(track.title||'Generated track')+' · '+(i+1);box.append(title);
+    const player=document.createElement('audio');player.controls=true;player.preload='none';player.src=track.audioUrl;player.style.width='100%';box.append(player);
+    const links=document.createElement('div');links.className='row';
+    for(const [url,label] of [[track.audioUrl,'Download audio'],[track.wavUrl,'Download WAV']]){
+      if(!url)continue;const a=document.createElement('a');a.className='btn btn--sm';a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=label;links.append(a);
+    }
+    box.append(links);wrapper.append(box);
+  });
+  wrapper.hidden=false;$('#ai-prog').hidden=true;$('#ai-run').disabled=false;
 }
-
-/* Event listeners */
-var dz = $('#drop');
-['dragenter', 'dragover'].forEach(ev => dz?.addEventListener(ev, x => { x.preventDefault(); dz.classList.add('is-dragover'); }));
-['dragleave', 'drop'].forEach(ev => dz?.addEventListener(ev, x => { 
-    x.preventDefault(); dz.classList.remove('is-dragover'); 
-    if (ev === 'drop' && x.dataTransfer.files.length > 0) { 
-        processFile(x.dataTransfer.files[0]);
-        location.hash = '#/analyzer'; 
-    } 
-}));
-dz?.addEventListener('click', () => {
-    let input = document.createElement('input'); input.type = 'file'; input.accept = 'audio/*';
-    input.onchange = e => { if(e.target.files.length > 0) { processFile(e.target.files[0]); location.hash = '#/analyzer'; } };
-    input.click();
+async function pollMusic(){
+  if(!musicTicket)return;
+  if(++musicPollCount>90){$('#ai-msg').textContent='Still processing. Check MusicGPT dashboard if the result takes longer.';$('#ai-run').disabled=false;return;}
+  try{
+    const response=await fetch('/api/musicgpt-status?ticket='+encodeURIComponent(musicTicket),{cache:'no-store'});
+    const body=await response.json();if(!response.ok)throw Error(body.error||'Status check failed.');
+    if(body.status==='failed')throw Error(body.message||'Music generation failed.');
+    if(body.tracks?.length){renderMusicTracks(body.tracks);stopMusicPolling();return;}
+    $('#ai-msg').textContent=body.message||'MusicGPT is processing your audio…';
+    musicPollTimer=setTimeout(pollMusic,6000);
+  }catch(error){$('#ai-msg').textContent=error.message+' — Check provider dashboard before starting another generation.';$('#ai-run').disabled=false;stopMusicPolling();}
+}
+$('#ai-run').addEventListener('click',async()=>{
+  if(location.hash!=='#/ai/music'||musicTicket)return;
+  const prompt=$('#music-prompt').value.trim(),access=$('#music-access').value;
+  if(!prompt){toast('Enter a music prompt.');$('#music-prompt').focus();return;}
+  if(!access){toast('Enter your owner access code.');$('#music-access').focus();return;}
+  $('#ai-run').disabled=true;$('#ai-res').hidden=true;$('#ai-prog').hidden=false;$('#ai-idle').hidden=true;
+  $('#ai-msg').textContent='Submitting to MusicGPT…';$('#ai-pct').textContent='Queued';$('#ai-bar').style.width='0%';
+  try{
+    const response=await fetch('/api/musicgpt-generate',{method:'POST',headers:{'Content-Type':'application/json','X-Pulse-Access':access},body:JSON.stringify({prompt,style:$('#music-style').value,duration:Number($('#music-length').value),instrumental:$('#music-instrumental').checked})});
+    const body=await response.json();if(!response.ok)throw Error(body.error||'MusicGPT request failed.');
+    musicTicket=body.ticket;musicPollCount=0;$('#music-access').value='';
+    $('#ai-msg').textContent='Queued on MusicGPT. Waiting for real audio…';$('#ai-pct').textContent='Processing';musicPollTimer=setTimeout(pollMusic,4000);
+  }catch(error){$('#ai-prog').hidden=true;$('#ai-idle').hidden=false;$('#ai-idle').textContent=error.message;$('#ai-run').disabled=false;}
 });
-
-document.addEventListener('click', function (e) {
-  var t;
-  if ((t = e.target.closest('[data-load]'))) {
-    if (!state.buffer) toast('Please upload a file via the Dropzone first.');
-    if (t.dataset.go) location.hash = '#/' + t.dataset.go;
-    return;
-  }
-  if ((t = e.target.closest('[data-unload]'))) { reset(); toast('Audio removed'); return; }
-  if ((t = e.target.closest('[data-toast]'))) { toast(t.dataset.toast); return; }
-  
-  // Tagger Copy
-  if(e.target.textContent && e.target.textContent.includes('Copy tags')) {
-      if(navigator.clipboard) navigator.clipboard.writeText('Synthwave, Electronic, Synth pad, Drum machine, Nocturnal, Driving').then(()=>toast('Tags copied to clipboard.'));
-  }
-});
-
-/* Router */
-function route() {
-  var h = location.hash.replace(/^#\/?/, '') || 'home';
-  var parts = h.split('/'), name = parts[0], view = name;
-  $$('.view').forEach(v => v.hidden = v.dataset.view !== view);
-  
-  if (name === 'ai' && parts[1]) {
-      var t = AIMAP[parts[1]];
-      if(t) {
-        clearInterval(aiTimer);
-        $('#ai-title').innerHTML = `<em>${t.name}</em>`; $('#ai-desc').textContent = t.d;
-        $('#ai-idle').hidden = false; $('#ai-prog').hidden = true; $('#ai-res').hidden = true;
-      }
-  }
-
-  $$('[data-nav]').forEach(a => a.setAttribute('aria-current', (a.dataset.nav === (name==='ai-tool'?'ai':name) ? 'true' : 'false')));
-  window.scrollTo(0, 0);
-  vs.run = (view === 'visualizer');
-  if (vs.run && !vs.loop) { vs.loop = true; requestAnimationFrame(frame); }
-}
-window.addEventListener('hashchange', route);
-
-/* Visualizer (Live AudioContext) */
-var cv = $('#viz');
-var vs = { style: 'bars', color: '#ff4d1c', sens: 70, playing: false, run: false, loop: false, t: 0, last: 0, source: null, analyser: null, data: null, audioCtx: null };
-
-if($('#vplay')) {
-  $('#vplay').onclick = async () => {
-      if(!state.buffer) { toast("No audio loaded."); return; }
-      if(vs.playing) {
-          vs.playing = false;
-          if(vs.source) { try{vs.source.stop();}catch{} vs.source.disconnect(); vs.source = null; }
-          $('#vplay').textContent = '▶';
-          return;
-      }
-      
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if(!vs.audioCtx) vs.audioCtx = new Ctx();
-      if(vs.audioCtx.state === 'suspended') await vs.audioCtx.resume();
-      
-      vs.source = vs.audioCtx.createBufferSource();
-      vs.source.buffer = state.buffer;
-      
-      vs.analyser = vs.audioCtx.createAnalyser();
-      vs.analyser.fftSize = 512;
-      vs.data = new Uint8Array(vs.analyser.frequencyBinCount);
-      
-      vs.source.connect(vs.analyser);
-      vs.analyser.connect(vs.audioCtx.destination);
-      vs.source.start(0);
-      
-      vs.playing = true;
-      $('#vplay').textContent = '❚❚';
-      vs.source.onended = () => { vs.playing = false; $('#vplay').textContent = '▶'; };
-  };
-}
-
-function frame(ts) {
-  if (!vs.run) { vs.loop = false; return; }
-  requestAnimationFrame(frame);
-  if(!cv) return;
-  var cx = cv.getContext('2d');
-  var w = cv.width, h = cv.height;
-  
-  cx.fillStyle = '#050506'; cx.fillRect(0, 0, w, h);
-  cx.fillStyle = vs.color; cx.strokeStyle = vs.color;
-  
-  if(!vs.playing) {
-      var dt = (ts - vs.last) / 1000; vs.last = ts; if (dt > 0.1) dt = 0.016;
-      vs.t += dt;
-      var k = ($('#vsens') ? $('#vsens').value : 70) / 100;
-      
-      if (vs.style === 'bars') {
-        var n = 48, bw = w / n;
-        for (var i = 0; i < n; i++) {
-          var a = (0.2 + 0.8 * Math.abs(Math.sin(vs.t * 2.1 + i * 0.35) * Math.cos(vs.t * 0.9 + i * 0.12))) * k;
-          var bh = a * h * 0.5; cx.fillRect(i * bw + bw * 0.15, h - bh, bw * 0.7, bh);
-        }
-      } else if (vs.style === 'wave') {
-        cx.lineWidth = Math.max(3, h / 160); cx.beginPath();
-        for (var x = 0; x <= w; x += 4) {
-          var y = h / 2 + Math.sin(x / w * 18 + vs.t * 3) * h * 0.18 * k * Math.sin(x / w * 3.1 + vs.t) + Math.sin(x / w * 47 + vs.t * 5) * h * 0.05 * k;
-          if (x === 0) cx.moveTo(x, y); else cx.lineTo(x, y);
-        }
-        cx.stroke();
-      } else {
-        var m = Math.min(w, h), r0 = m * 0.2; cx.lineWidth = m * 0.012; cx.lineCap = 'round';
-        for (var i = 0; i < 72; i++) {
-          var ang = i / 72 * Math.PI * 2, aa = (0.15 + 0.85 * Math.abs(Math.sin(vs.t * 2 + i * 0.4) * Math.cos(vs.t + i * 0.17))) * k, len = m * 0.24 * aa;
-          cx.beginPath(); cx.moveTo(w / 2 + Math.cos(ang) * r0, h / 2 + Math.sin(ang) * r0); cx.lineTo(w / 2 + Math.cos(ang) * (r0 + len), h / 2 + Math.sin(ang) * (r0 + len)); cx.stroke();
-        }
-      }
-      return;
-  }
-  
-  if(vs.analyser && vs.data) {
-      var k = ($('#vsens') ? $('#vsens').value : 70) / 100;
-      if (vs.style === 'bars') {
-          vs.analyser.getByteFrequencyData(vs.data);
-          var n = 64, bw = w / n;
-          for(var i=0; i<n; i++) {
-              var v = vs.data[i] / 255.0;
-              var bh = v * h * k * 1.5;
-              cx.fillRect(i * bw + bw * 0.1, h - bh, bw * 0.8, bh);
-          }
-      } else if (vs.style === 'wave') {
-          vs.analyser.getByteTimeDomainData(vs.data);
-          cx.lineWidth = Math.max(3, h / 160); cx.beginPath();
-          var slice = w / vs.data.length;
-          for(var i=0; i<vs.data.length; i++) {
-              var v = vs.data[i] / 128.0;
-              var y = v * h / 2;
-              if(i===0) cx.moveTo(i*slice, y); else cx.lineTo(i*slice, y);
-          }
-          cx.stroke();
-      } else {
-          vs.analyser.getByteFrequencyData(vs.data);
-          var m = Math.min(w, h), r0 = m * 0.2; cx.lineWidth = m * 0.012; cx.lineCap = 'round';
-          var n = 72;
-          for (var i = 0; i < n; i++) {
-            var ang = (i / n) * Math.PI * 2;
-            var v = (vs.data[i] / 255.0) * k * 1.5;
-            var len = m * 0.25 * v;
-            cx.beginPath(); cx.moveTo(w / 2 + Math.cos(ang) * r0, h / 2 + Math.sin(ang) * r0); cx.lineTo(w / 2 + Math.cos(ang) * (r0 + len), h / 2 + Math.sin(ang) * (r0 + len)); cx.stroke();
-          }
-      }
-  }
-}
-$$('input[name="vs"]').forEach(r => r.addEventListener('change', () => vs.style = r.value));
-$$('#vcol .swatch').forEach(b => b.addEventListener('click', () => { vs.color = b.dataset.c; $$('#vcol .swatch').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false')); }));
-if($('#vsens')) $('#vsens').addEventListener('input', e => { vs.sens = +e.target.value; $('#vsensO').textContent = vs.sens + '%'; });
-
-initStudioTools();
-route();
+function route(){const p=(location.hash||'#/home').replace(/^#\/?/,'').split('/');let view=p[0];if(view==='ai'&&p[1]){const a=aiMap[p[1]];if(!a){location.hash='#/ai';return;}view='ai-tool';$('#ai-title').textContent=a.label;$('#ai-crumb').textContent=a.label;
+  if(a.id==='music'){renderMusicUI();}
+  else{const empty=$('[data-view="ai-tool"] .when-empty');if(empty)empty.hidden=false;$('#ai-tool-workspace').classList.add('when-loaded');$('#ai-desc').textContent='This tool is not yet connected to a processing engine.';$('#ai-tag').textContent='Not connected';$('#ai-tag').className='tag tag--soon';$('#ai-controls').innerHTML='<p class="note">Processing controls will appear when the actual engine is available.</p>';$('#ai-run').disabled=true;$('#ai-run').textContent='Not available yet';$('#ai-idle').hidden=false;$('#ai-prog').hidden=true;$('#ai-res').hidden=true;}
+  if(a.id!=='music')stopMusicPolling();}
+  else stopMusicPolling();
+  $$('.view').forEach(v=>v.hidden=v.dataset.view!==view);const tab=view==='ai-tool'?'ai':view;$$('[data-nav]').forEach(link=>link.setAttribute('aria-current',String(link.dataset.nav===tab)));window.scrollTo(0,0);document.title='PULSE Studio — '+(view==='home'?'Audio Workspace':view);
+  if(view==='visualizer')startVisuals();else stopVisuals();}
+window.addEventListener('hashchange',route);
+const eqBands=[{f:80,g:0,q:1},{f:400,g:0,q:1.4},{f:3000,g:0,q:1.2},{f:10000,g:0,q:.8}];let selectedBand=1;window.getPulseEQ=()=>eqBands;
+function drawEq(){const W=400,M=75,x=f=>W*Math.log(f/20)/Math.log(1000),y=g=>M-g*(M/14);$('#eqgrid').innerHTML=[20,100,1000,10000].map(f=>`<line class="gridline" x1="${x(f)}" x2="${x(f)}" y1="0" y2="150"/>`).join('')+'<line class="gridline zero" x1="0" x2="400" y1="75" y2="75"/>';
+ const points=[];for(let t=0;t<=W;t+=4){let g=0;eqBands.forEach(b=>{const d=(t-x(b.f))/(W/5.5/b.q);g+=b.g*Math.exp(-d*d)});points.push(`L${t},${y(g).toFixed(1)}`);}$('#curve').setAttribute('d',`M0,75 ${points.join(' ')} L400,75 Z`);$('#nodes').innerHTML=eqBands.map((b,i)=>`<circle class="node ${i===selectedBand?'is-active':''}" cx="${x(b.f)}" cy="${y(b.g)}" r="${i===selectedBand?7:5}"/>`).join('');const b=eqBands[selectedBand];$('#ef').value=Math.round(1000*Math.log(b.f/20)/Math.log(1000));$('#eg').value=b.g;$('#eqq').value=b.q;$('#efO').textContent=Math.round(b.f)+' Hz';$('#egO').textContent=b.g.toFixed(1)+' dB';$('#eqO').textContent=b.q.toFixed(1);}
+$$('.bands .chip').forEach(x=>x.addEventListener('click',()=>{selectedBand=Number(x.dataset.b);$$('.bands .chip').forEach(b=>b.setAttribute('aria-pressed',String(b===x)));drawEq()}));$('#ef').oninput=e=>{eqBands[selectedBand].f=20*Math.pow(1000,e.target.value/1000);drawEq()};$('#eg').oninput=e=>{eqBands[selectedBand].g=Number(e.target.value);drawEq()};$('#eqq').oninput=e=>{eqBands[selectedBand].q=Number(e.target.value);drawEq()};drawEq();
+for(const [id,out,suffix] of [['fi','fiO',' s'],['fo','foO',' s'],['gn','gnO',' dB']]){$('#'+id).oninput=e=>{$('#'+out).textContent=Number(e.target.value).toFixed(1)+suffix};}
+// Converter and editor use actual Web Audio processing via initStudioTools.
+$$('input[name="cf"]').forEach(r=>r.onchange=()=>{$('#cbr-wrap').hidden=!['mp3'].includes($('input[name="cf"]:checked').value)});
+for(const fmt of ['flac','aac','ogg']){const r=$(`input[name="cf"][value="${fmt}"]`);if(r){r.disabled=true;r.closest('label').title='Not available in this browser build';}}
+for(const fmt of ['m4a','flac']){const r=$(`input[name="efmt"][value="${fmt}"]`);if(r){r.disabled=true;r.closest('label').title='Not available in this browser build';}}
+// Real visualizer uses the decoded buffer and frequency bins, not the prototype timer.
+let visualFrame=0,analyser=null,visualSource=null,ctx=null,visualStyle='bars',visualColor='#ff4d1c';const canvas=$('#viz');
+function stopVisuals(){cancelAnimationFrame(visualFrame);visualFrame=0;if(visualSource){try{visualSource.stop()}catch{}visualSource=null}$('#vplay').textContent='▶';}
+function paintVisual(){const c=canvas.getContext('2d'),w=canvas.width,h=canvas.height;c.fillStyle='#050506';c.fillRect(0,0,w,h);c.fillStyle=visualColor;c.strokeStyle=visualColor;const bins=new Uint8Array(analyser?.frequencyBinCount||128);analyser?.getByteFrequencyData(bins);const scale=Number($('#vsens').value)/100;
+ if(visualStyle==='bars'){for(let i=0;i<48;i++){const val=(bins[i]||0)/255;const bh=val*h*.85*scale;c.fillRect(i*w/48+2,h-bh,w/48-4,bh)}}else if(visualStyle==='wave'){c.beginPath();for(let i=0;i<bins.length;i++){const x=i*w/(bins.length-1),y=h/2-(bins[i]/255)*h*.4*scale;i?c.lineTo(x,y):c.moveTo(x,y)}c.stroke();}else{const n=72,m=Math.min(w,h);for(let i=0;i<n;i++){const angle=i*Math.PI*2/n,length=((bins[i]||0)/255)*m*.24*scale;c.beginPath();c.moveTo(w/2+Math.cos(angle)*m*.18,h/2+Math.sin(angle)*m*.18);c.lineTo(w/2+Math.cos(angle)*(m*.18+length),h/2+Math.sin(angle)*(m*.18+length));c.stroke()}}visualFrame=requestAnimationFrame(paintVisual);}
+function startVisuals(){if(!visualFrame)paintVisual()}
+$('#vplay').onclick=async()=>{if(visualSource){stopVisuals();startVisuals();return}if(!state.buffer){toast('Load audio first');return}ctx||=new (window.AudioContext||window.webkitAudioContext)();await ctx.resume();const source=ctx.createBufferSource();source.buffer=state.buffer;analyser=ctx.createAnalyser();source.connect(analyser);analyser.connect(ctx.destination);source.onended=()=>{visualSource=null;$('#vplay').textContent='▶'};source.start();visualSource=source;$('#vplay').textContent='❚❚'};
+$$('input[name="vs"]').forEach(r=>r.onchange=()=>visualStyle=r.value);$$('input[name="va"]').forEach(r=>r.onchange=()=>{const map={'16:9':[1280,720],'9:16':[720,1280],'1:1':[1000,1000]};[canvas.width,canvas.height]=map[r.value]});$$('#vcol .swatch').forEach(b=>b.onclick=()=>{visualColor=b.dataset.c;$$('#vcol .swatch').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))});$('#vsens').oninput=e=>$('#vsensO').textContent=e.target.value+'%';
+// Unsupported editor buttons never claim that they have edited audio.
+$$('.toolbar .tool').forEach(b=>{if(['Select','Trim','Cut','Fade in','Fade out','Reverse','Gain','Merge','↶','↷','−','+'].some(x=>b.textContent.trim().startsWith(x))){if(!b.hasAttribute('disabled'))b.addEventListener('click',()=>{if(!['Select','Trim','Cut'].some(x=>b.textContent.startsWith(x)))toast('Use the available selection and fade/gain controls below.');});}});
+$$('[data-slot="chip"]').forEach(el=>el.outerHTML='<div class="filechip when-loaded"><i class="dot" aria-hidden="true"></i><b>Audio</b><span></span><button class="btn btn--sm" data-unload>Replace</button></div>');
+$$('[data-slot="empty"]').forEach(el=>el.outerHTML=`<div class="empty when-empty"><div class="dropzone__icon">+</div><h2>No track loaded yet</h2><p>${el.dataset.msg}</p><button class="btn btn--primary" data-load>Choose audio file</button></div>`);
+// Disable false success buttons from the reference prototype.
+for(const t of ['Undo','Redo','Merge','Reverse','Export PNG','Export video','Copy tags']){const btn=$$('button').find(el=>el.textContent.trim()===t);if(btn){btn.disabled=true;btn.title='Not implemented in this version';}}
+$('#consent-yes').disabled=true;$('#consent-no').onclick=()=>$('#consent').close();
+initStudioTools();reset();route();
 
 })();
 </script>
-</body></html>
+</body>
+</html>
