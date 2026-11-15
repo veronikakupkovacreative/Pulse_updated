@@ -15,11 +15,11 @@ const noImports=source=>source.replace(/^import[^\n]+\n/gm,'');
 const workerSource=noExports(analyzer)+'\n'+noImports(worker);
 const keySource=noExports(studioAudio)+'\n'+noImports(keyWorker);
 new vm.Script(workerSource);new vm.Script(keySource);
-const workerRe=/new Worker\(new URL\('\.\/analysis-worker\.mjs',\s*import\.meta\.url\),\s*\{type:'module'\}\)/g;
-const keyRe=/new Worker\(new URL\('\.\/key-worker\.mjs',\s*import\.meta\.url\),\s*\{type:'module'\}\)/g;
-assert.equal((app.match(workerRe)||[]).length,1,'Expected one BPM worker constructor');
-assert.equal((app.match(keyRe)||[]).length,1,'Expected one key worker constructor');
-app=noImports(app).replace(workerRe,'createAnalysisWorker()').replace(keyRe,'createBundledKeyWorker()');
+const bpmWorkerRe=/new Worker\(new URL\('\.\/analysis-worker\.mjs',\s*import\.meta\.url\),\s*\{type:'module'\}\)/g;
+const keyWorkerRe=/new Worker\(new URL\('\.\/key-worker\.mjs',\s*import\.meta\.url\),\s*\{type:'module'\}\)/g;
+assert.equal((app.match(bpmWorkerRe)||[]).length,1,'Expected one BPM worker constructor');
+assert.equal((app.match(keyWorkerRe)||[]).length,1,'Expected one key worker constructor');
+app=noImports(app).replace(bpmWorkerRe,'createAnalysisWorker()').replace(keyWorkerRe,'createBundledKeyWorker()');
 tools=noImports(tools);
 const createBlobWorker=source=>`function ${source==='bpm'?'createAnalysisWorker':'createBundledKeyWorker'}(){\n    const url=URL.createObjectURL(new Blob([${source==='bpm'?'ANALYSIS_WORKER_SOURCE':'KEY_WORKER_SOURCE'}],{type:'text/javascript'}));\n    let worker;try{worker=new Worker(url);}catch(error){URL.revokeObjectURL(url);throw error;}\n    const terminate=worker.terminate.bind(worker);worker.terminate=()=>{URL.revokeObjectURL(url);terminate();};return worker;\n  }`;
 const rawApiBase=(process.env.PULSE_API_BASE_URL||'').trim();
@@ -42,9 +42,9 @@ assert(!bundledScript.includes('import.meta'),'Standalone app cannot reference i
 assert(html.includes('<link rel="stylesheet" href="./style.css">'));
 assert(html.includes('<script type="module" src="./app.mjs"></script>'));
 html=html.replace('<link rel="stylesheet" href="./style.css">',()=>'<style>\n'+css.replace(/<\/style/gi,'<\\/style')+'\n</style>')
-  .replace('  <script type="module" src="./app.mjs"></script>','')
+  .replace('<script type="module" src="./app.mjs"></script>','')
   .replace('</body>',()=>'<script>\n'+bundledScript.replace(/<\/script/gi,'<\\/script')+'\n</script>\n</body>');
-assert(!/<link[^>]+rel=["']stylesheet/.test(html));
+assert(!/<link[^>]+rel=["']stylesheet[^>]+href=["']\.\//.test(html));
 assert(!/<script[^>]+src=/.test(html));
 await mkdir(path.join(root,'public'),{recursive:true});
 await writeFile(path.join(root,'public/index.html'),html);

@@ -66,3 +66,15 @@ Soubory:
 - `server.py` — sdílené funkce yt-dlp/FFmpeg
 - `vercel.json` — statický web
 - `tests/` — automatické testy
+
+
+## MusicGPT music generation (owner-only preview)
+
+The `#/ai/music` screen uses `POST /api/musicgpt-generate` and `GET /api/musicgpt-status` (Vercel serverless functions). It requires two **server-side** environment variables in Vercel:
+
+- `PULSE_MUSICGPT_OWNER_TOKEN`: the MusicGPT API key (never expose to the browser).
+- `PULSE_MUSICGPT_GENERATION_ACCESS_CODE`: a distinct, randomly generated owner access code **at least 16 characters**. Enter it in the UI to authorize each paid generation. Do not reuse the MusicGPT API key for this.
+
+Without the second variable paid generation remains locked (503). The API accepts a prompt (1–280 characters), style, experimental duration, and instrumental flag. It uses MusicGPT `/v2/MusicAI` and polls `/v1/byId` via a signed 6-hour ticket, returning only HTTPS audio URLs. Upstream generation may be charged for two variants, and status polling is read-only. Avoid retrying POST after a timeout as MusicGPT does not document idempotency. Owner-only access gating prevents anonymous usage but **does not replace global edge rate limiting** for public launches.
+
+Run `npm test && npm run build` before deployment. Do not make paid live API calls in automated tests.

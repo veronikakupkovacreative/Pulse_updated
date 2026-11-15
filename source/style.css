@@ -748,3 +748,8 @@ dialog.modal .row { justify-content: flex-end; }
 .view h1:focus, #main:focus { outline: none; }          /* heading focus after route change: no ring */
 .block .row--between { margin-bottom: var(--space-2); } /* breathing room under block headers */
 .block .row--between h3 { margin: 0; }
+/* Always keep reference in its intended dark-only mode */
+:root { color-scheme:dark; }
+.protobar{display:none}
+#toast.show{z-index:500}
+#live-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
